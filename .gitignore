@@ -1,0 +1,17 @@
+# Ignore build outputs and generated files
+bin/
+*.class
+*.jar
+*.log
+*.DS_Store
+*.iml
+
+# IntelliJ IDEA
+.idea/
+out/
+*.ipr
+*.iws
+
+# macOS metadata
+*.icns
+*.iconset

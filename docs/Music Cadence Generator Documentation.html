@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Music Cadence Generator Documentation</title>
+  <style>
+    body {
+      font-family: Georgia, serif;
+      max-width: 800px;
+      margin: auto;
+      padding: 2em;
+      background-color: #f9f9f9;
+    }
+    h1 { color: #333; }
+    h2 { color: #666; margin-top: 2em; }
+    code { background: #f3f3f3; padding: 2px 4px; }
+    pre { background: #f0f0f0; padding: 1em; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Music Cadence Generator</h1>
+
+  <p><strong>Music Cadence Generator</strong> is a Java-based desktop application for exploring the sonic and structural possibilities of harmonic cadences through transformation.</p>
+
+  <h2>What It Does</h2>
+  <p>
+    Users select a starting cadence — a progression of chords — and then apply up to three transformations sequentially. Each transformation alters the structure of the cadence based on a musical operation, such as inversion, retrograde, or transposition.
+  </p>
+  <p>
+    The app displays both the interval matrix and the concrete notes before and after each transformation. It provides real-time MIDI playback using a custom SoundFont, and can export the final result as MusicXML.
+  </p>
+
+  <h2>Why It Matters</h2>
+  <p>
+    Transformational theory is a powerful lens through which to view music. This app makes abstract musical operations visible and audible, enabling composers and students to investigate the "what ifs" of harmony — what happens when we invert a cadence? Multiply its intervals? Swap rows and columns of its matrix?
+  </p>
+  <p>
+    By integrating these ideas into an interactive system, the generator fosters intuitive understanding of theoretical ideas, and encourages playful musical discovery.
+  </p>
+
+  <h2>Getting Started</h2>
+  <p>To compile and run:</p>
+  <pre><code>make jar
+java -jar music-cadence-generator.jar</code></pre>
+
+  <h2>Transformations Included</h2>
+  <ul>
+    <li>Identity</li>
+    <li>Retrograde</li>
+    <li>Inversion</li>
+    <li>Transposition (+2)</li>
+    <li>Transpose Rows⇄Cols</li>
+    <li>Negation (12–x)</li>
+    <li>Cycle</li>
+    <li>Major→Minor</li>
+    <li>Add Ninth / Seventh</li>
+    <li>Augmentation / Diminution</li>
+    <li>Extend / Duplicate Chords</li>
+  </ul>
+
+  <h2>Credits</h2>
+  <p>Developed by <strong>Evandro Veloso Gomes</strong> (<a href="mailto:gnome_gtk2000@yahoo.com.br">gnome_gtk2000@yahoo.com.br</a>)</p>
+
+</body>
+</html>
