@@ -12,7 +12,7 @@ MANIFEST   := manifest.mf
 
 # Main class and final JAR
 MAIN_CLASS := com.music.ui.MainApp
-TARGET_JAR := music-cadence-generator.jar
+TARGET_JAR := "Music Cadence Generator.jar"
 
 # Icon settings
 ICON_PNG       := icon.png
