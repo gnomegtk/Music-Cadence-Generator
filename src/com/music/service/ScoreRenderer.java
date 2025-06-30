@@ -3,19 +3,11 @@ package com.music.service;
 import com.music.domain.Cadence;
 import com.music.domain.Note;
 
-import java.util.List;
-
 /**
- * Renders a Cadence to HTML (render) and MusicXML (toMusicXML).
- * The MusicXML output groups each chord’s notes under the same measure,
- * using <chord/> for all but the first note in each chord, and sets
- * each chord to a quarter-note duration.
+ * Renders HTML and MusicXML output from a Cadence using interval-based voicing.
  */
 public class ScoreRenderer {
 
-    /**
-     * Return an HTML snippet of the matrix for embedding in Swing.
-     */
     public static String render(Cadence c) {
         StringBuilder sb = new StringBuilder("<html><body style=\"font-family:monospace;\">");
         sb.append("<h3>").append(c.type()).append("</h3><pre>");
@@ -31,12 +23,9 @@ public class ScoreRenderer {
         return sb.toString();
     }
 
-    /**
-     * Produce full MusicXML document for this cadence, with each chord
-     * as simultaneous quarter notes.
-     */
-    public static String toMusicXML(Cadence c) {
+    public static String toMusicXML(Cadence cadence) {
         StringBuilder xml = new StringBuilder();
+
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.append("<score-partwise version=\"3.1\">\n");
         xml.append("  <part-list>\n");
@@ -53,24 +42,19 @@ public class ScoreRenderer {
         xml.append("        <clef><sign>G</sign><line>2</line></clef>\n");
         xml.append("      </attributes>\n");
 
-        // Each chord as a group of <note>, all with duration 1 (quarter)
-        Note[][] matrix = c.matrix();
-        for (Note[] chord : matrix) {
-            // first note: no <chord/>
-            for (int i = 0; i < chord.length; i++) {
-                Note note = chord[i];
+        int[][] intervals = cadence.intervals();
+        for (int[] chord : intervals) {
+            int[] pitches = applyVoicingFromIntervals(chord, 60); // C4 = MIDI 60
+
+            for (int i = 0; i < pitches.length; i++) {
+                Pitch p = midiToPitch(pitches[i]);
+
                 xml.append("      <note>\n");
-                if (i > 0) {
-                    xml.append("        <chord/>\n");
-                }
-                // pitch
-                String name = note.toString();
-                Pitch p = parsePitch(name);
+                if (i > 0) xml.append("        <chord/>\n");
                 xml.append("        <pitch>\n");
                 xml.append("          <step>").append(p.step).append("</step>\n");
-                if (p.alter != 0) {
+                if (p.alter != 0)
                     xml.append("          <alter>").append(p.alter).append("</alter>\n");
-                }
                 xml.append("          <octave>").append(p.octave).append("</octave>\n");
                 xml.append("        </pitch>\n");
                 xml.append("        <duration>1</duration>\n");
@@ -82,41 +66,43 @@ public class ScoreRenderer {
         xml.append("    </measure>\n");
         xml.append("  </part>\n");
         xml.append("</score-partwise>\n");
+
         return xml.toString();
     }
 
-    /**
-     * Parse a Note name like "C4", "G#3" or "D" into MusicXML pitch components.
-     * Notes without an octave default to octave 4.
-     */
-    private static Pitch parsePitch(String name) {
-        String pitch;
-        int octave;
-        name = name.trim();
-        char last = name.charAt(name.length() - 1);
-        if (Character.isDigit(last)) {
-            pitch = name.substring(0, name.length() - 1);
-            octave = Character.getNumericValue(last);
-        } else {
-            pitch = name;
-            octave = 4;
+    private static int[] applyVoicingFromIntervals(int[] chord, int basePitch) {
+        int[] result = new int[chord.length];
+        for (int i = 0; i < chord.length; i++) {
+            result[i] = basePitch + chord[i];
         }
-
-        int alter = 0;
-        String step = pitch;
-        if (pitch.endsWith("#")) {
-            step = pitch.substring(0, pitch.length() - 1);
-            alter = 1;
-        }
-
-        return new Pitch(step, alter, octave);
+        return result;
     }
 
-    /** Helper struct for MusicXML pitch. */
+    private static Pitch midiToPitch(int midi) {
+        int note = midi % 12;
+        int octave = (midi / 12) - 1;
+
+        if (note == 0) return new Pitch("C", 0, octave);
+        if (note == 1) return new Pitch("C", 1, octave);
+        if (note == 2) return new Pitch("D", 0, octave);
+        if (note == 3) return new Pitch("D", 1, octave);
+        if (note == 4) return new Pitch("E", 0, octave);
+        if (note == 5) return new Pitch("F", 0, octave);
+        if (note == 6) return new Pitch("F", 1, octave);
+        if (note == 7) return new Pitch("G", 0, octave);
+        if (note == 8) return new Pitch("G", 1, octave);
+        if (note == 9) return new Pitch("A", 0, octave);
+        if (note == 10) return new Pitch("A", 1, octave);
+        if (note == 11) return new Pitch("B", 0, octave);
+
+        return new Pitch("C", 0, octave);
+    }
+
     private static class Pitch {
-        final String step;
-        final int alter;
-        final int octave;
+        String step;
+        int alter;
+        int octave;
+
         Pitch(String step, int alter, int octave) {
             this.step = step;
             this.alter = alter;

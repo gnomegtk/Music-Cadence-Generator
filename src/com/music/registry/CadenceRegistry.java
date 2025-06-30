@@ -16,12 +16,12 @@ public class CadenceRegistry {
 
     private static final Map<String,int[][]> CADENCES = new LinkedHashMap<>();
     static {
-        CADENCES.put("II–V–I (Maj)", new int[][]{{2,5,9},{7,11,14},{0,4,7}});
+        CADENCES.put("II–V–I (Maj)", new int[][]{{2,6,9},{7,11,14},{0,4,7}});
         CADENCES.put("IV–V–I (Maj)", new int[][]{{5,9,12},{7,11,14},{0,4,7}});
-        CADENCES.put("II–V–I (Min)", new int[][]{{2,5,9},{7,11,15},{0,3,7}});
+        CADENCES.put("II–V–I (Min)", new int[][]{{2,5,9},{7,11,14},{0,3,7}});
         CADENCES.put("IV–V–I (Min)", new int[][]{{5,8,12},{7,11,14},{0,3,7}});
-        CADENCES.put("Deceptive",      new int[][]{{7,11,14},{9,13,16},{0,4,7}});
-        CADENCES.put("II°–V–i",        new int[][]{{2,5,8},{7,11,15},{0,3,7}});
+        CADENCES.put("Deceptive",    new int[][]{{7,11,14},{9,12,16},{0,4,7}});
+    	CADENCES.put("II°–V–i",      new int[][]{{2,5,8},{7,11,14},{0,3,7}});
     }
 
     public static List<String> getAvailableCadences() {

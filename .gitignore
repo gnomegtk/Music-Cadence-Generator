@@ -15,3 +15,6 @@ out/
 # macOS metadata
 *.icns
 *.iconset
+
+#soundfonts
+src/main/resources/soundfonts/*
