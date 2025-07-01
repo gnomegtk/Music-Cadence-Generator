@@ -21,14 +21,8 @@ import java.util.*;
 import java.util.List;
 
 /**
- * MainApp (Swing version) for Music Cadence Generator.
- *
- * - Loads a GM SoundFont from /soundfonts
- * - Offers cadence, tonic, transformations, instrument, tempo
- * - Displays matrices, descriptions, HTML score
- * - Plays in a background thread
- * - Exports MusicXML with simultaneous quarter-note chords
- * - Sets custom window icon, Dock icon, and a properly sized About icon
+ * MainApp (Swing UI) for Music Cadence Generator.
+ * Handles cadence selection, transformations, preview, MIDI playback, and MusicXML export.
  */
 public class MainApp extends JFrame {
     private final Synthesizer synth;
@@ -62,28 +56,21 @@ public class MainApp extends JFrame {
     public MainApp() throws Exception {
         super("Music Cadence Generator");
 
-        // Load the icon image from the JAR's /icons/icon.png
+        // Load and set application icon
         Image iconImage = Toolkit.getDefaultToolkit()
                                  .getImage(getClass().getResource("/icons/icon.png"));
-
-        // 1) Set as the JFrame window icon
         setIconImage(iconImage);
-
-        // 2) Also set as the macOS Dock icon (Java 9+)
         if (Taskbar.isTaskbarSupported()) {
-            Taskbar taskbar = Taskbar.getTaskbar();
-            try {
-                taskbar.setIconImage(iconImage);
-            } catch (UnsupportedOperationException e) {
-                // Not a supported platform or headless
-            }
+            try { Taskbar.getTaskbar().setIconImage(iconImage); }
+            catch (UnsupportedOperationException ignored) {}
         }
 
+        // Window setup
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1400, 850);
         setLocationRelativeTo(null);
 
-        // Build menu bar with Help → About
+        // Build menu with About
         JMenuBar menuBar = new JMenuBar();
         JMenu helpMenu = new JMenu("Help");
         JMenuItem aboutItem = new JMenuItem("About");
@@ -92,12 +79,11 @@ public class MainApp extends JFrame {
         menuBar.add(helpMenu);
         setJMenuBar(menuBar);
 
-        // — MIDI setup —
+        // MIDI setup with GM SoundFont
         synth = MidiSystem.getSynthesizer();
         synth.open();
         boolean sfLoaded = false;
         try (InputStream sf = getClass().getResourceAsStream("/soundfonts/FluidR3_GM.sf2")) {
-            if (sf == null) throw new IllegalStateException("SoundFont not found");
             Soundbank sb = MidiSystem.getSoundbank(sf);
             synth.loadAllInstruments(sb);
             sfLoaded = true;
@@ -107,7 +93,7 @@ public class MainApp extends JFrame {
                 "Warning", JOptionPane.WARNING_MESSAGE);
         }
 
-        // Instruments list
+        // Instrument list
         Instrument[] allIns = sfLoaded
             ? synth.getLoadedInstruments()
             : synth.getDefaultSoundbank().getInstruments();
@@ -116,9 +102,8 @@ public class MainApp extends JFrame {
             instrNames.add(ins.getPatch().getProgram() + ": " + ins.getName());
         }
 
-        // — UI controls —
-        cbCadence = new JComboBox<>(CadenceRegistry.getAvailableCadences()
-                                                    .toArray(new String[0]));
+        // UI controls
+        cbCadence = new JComboBox<>(CadenceRegistry.getAvailableCadences().toArray(new String[0]));
         cbCadence.setSelectedIndex(0);
 
         cbTonic = new JComboBox<>(new String[]{
@@ -137,24 +122,21 @@ public class MainApp extends JFrame {
         cbInstr.setSelectedIndex(0);
 
         Integer[] tempos = new Integer[19];
-        for (int i = 0, bpm = 60; bpm <= 240; bpm += 10, i++) {
-            tempos[i] = bpm;
-        }
+        for (int i = 0, bpm = 60; bpm <= 240; bpm += 10, i++) tempos[i] = bpm;
         cbTempo = new JComboBox<>(tempos);
         cbTempo.setSelectedItem(60);
 
         btnApply  = new JButton("Apply");
-        btnPlay   = new JButton("Play MIDI");   btnPlay.setEnabled(false);
-        btnExport = new JButton("Export XML");  btnExport.setEnabled(false);
+        btnPlay   = new JButton("Play MIDI");  btnPlay.setEnabled(false);
+        btnExport = new JButton("Export XML"); btnExport.setEnabled(false);
         btnReset  = new JButton("Reset");
 
-        // Matrix panels
+        // Grid panels
         for (int i = 0; i < 4; i++) {
             numPanels[i]  = new JPanel();
             notePanels[i] = new JPanel();
         }
 
-        // Description and HTML area
         descArea = new JTextArea(6, 80);
         descArea.setEditable(false);
         descArea.setLineWrap(true);
@@ -164,15 +146,12 @@ public class MainApp extends JFrame {
         htmlPane.setEditable(false);
         htmlPane.addHyperlinkListener(e -> {
             if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
-                try {
-                    Desktop.getDesktop().browse(e.getURL().toURI());
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
+                try { Desktop.getDesktop().browse(e.getURL().toURI()); }
+                catch (Exception ex) { ex.printStackTrace(); }
             }
         });
 
-        // Disable Play/Export on selection changes (except tempo)
+        // Disable Play/Export on changes except tempo
         Runnable disable = () -> {
             btnPlay.setEnabled(false);
             btnExport.setEnabled(false);
@@ -182,7 +161,6 @@ public class MainApp extends JFrame {
         cbT1     .addActionListener(e -> disable.run());
         cbT2     .addActionListener(e -> disable.run());
         cbT3     .addActionListener(e -> disable.run());
-        // tempo changes do NOT disable
 
         // — Apply button —
         btnApply.addActionListener(e -> {
@@ -211,12 +189,11 @@ public class MainApp extends JFrame {
             );
 
             htmlPane.setText(ScoreRenderer.render(s3));
-
             btnPlay.setEnabled(true);
             btnExport.setEnabled(true);
         });
 
-        // — Play button (non-blocking) —
+        // — Play button —
         btnPlay.addActionListener(e -> {
             if (lastCadence == null) return;
             if (playThread != null && playThread.isAlive()) playThread.interrupt();
@@ -226,7 +203,7 @@ public class MainApp extends JFrame {
             playThread.start();
         });
 
-        // — Export button —
+        // — Export button — (modified to pass BPM)
         btnExport.addActionListener(e -> {
             if (lastCadence == null) return;
             JFileChooser fc = new JFileChooser();
@@ -236,7 +213,8 @@ public class MainApp extends JFrame {
             ));
             if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try (FileWriter w = new FileWriter(fc.getSelectedFile())) {
-                    w.write(ScoreRenderer.toMusicXML(lastCadence));
+                    int bpm = (Integer) cbTempo.getSelectedItem();
+                    w.write(ScoreRenderer.toMusicXML(lastCadence, bpm));
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(this,
                         ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
