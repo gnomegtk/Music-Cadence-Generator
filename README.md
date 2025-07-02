@@ -43,28 +43,24 @@ This section collects ideas, challenges, and next steps discovered during develo
 
 ### 🎹 MIDI & Instrument Handling
 
-- [ ] Allow integration with external synthesizers (e.g., FluidSynth, VSTs).
+- Allow integration with external synthesizers (e.g., FluidSynth, VSTs).
 
 ### 🖥 UI & Usability
 
-- [ ] Embed a preview of the generated score inside the interface (SVG or raster image from MusicXML).
-- [ ] Let users tweak individual voices after transformation (e.g. in matrix or piano roll view).
+- Embed a preview of the generated score inside the interface (SVG or raster image from MusicXML).
+- Let users tweak individual voices after transformation (e.g. in matrix or piano roll view).
 
 ### 🔧 Transformations & Music Logic
 
-- [ ] Support voicing models like open, close, drop-2.
-- [ ] Implement better voice leading — e.g. minimize leaps, prefer contrary motion.
-- [ ] Allow selective transformation (e.g., apply inversion to soprano only).
+- Support voicing models like open, close, drop-2.
+- Implement better voice leading — e.g. minimize leaps, prefer contrary motion.
+- Allow selective transformation (e.g., apply inversion to soprano only).
 
 ### 🎼 Output Formats
 
-- [ ] Add `.wav` or `.mp3` export (via Java Audio or external renderer).
-- [ ] Export matrix and score visualizations as images (possibly via LilyPond or MuseScore CLI).
-- [ ] Add `.mid` export with embedded instrument and tempo metadata.
-
----
-
-This TODO list is your roadmap — or at least a well-marked detour sign — in case you pick the project up again later. 📍
+- Add `.wav` or `.mp3` export (via Java Audio or external renderer).
+- Export matrix and score visualizations as images (possibly via LilyPond or MuseScore CLI).
+- Add `.mid` export with embedded instrument and tempo metadata.
 
 ---
 
