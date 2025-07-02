@@ -139,9 +139,9 @@ public class MainApp extends JFrame {
         cbT3.setSelectedItem("Identity");
         cbInstr.setSelectedIndex(0);
 
-        Integer[] tempos = new Integer[19];
-        for (int i = 0, bpm = 60; bpm <= 240; bpm += 10, i++) tempos[i] = bpm;
-        cbTempo = new JComboBox<>(tempos);
+        List<Integer> bpmList = new ArrayList<>();
+        for (int i = 30; i <= 200; i++) bpmList.add(i);
+        cbTempo = new JComboBox<>(bpmList.toArray(new Integer[0]));
         cbTempo.setSelectedItem(60);
 
         btnApply  = new JButton("Apply");
