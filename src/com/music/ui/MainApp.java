@@ -26,7 +26,8 @@ import java.util.List;
  */
 public class MainApp extends JFrame {
     private final Synthesizer synth;
-    private final JComboBox<String> cbCadence, cbTonic, cbT1, cbT2, cbT3, cbInstr;
+    private final JComboBox<String> cbCadence, cbTonic, cbT1, cbT2, cbT3;
+    private final JComboBox<Instrument> cbInstr;
     private final JComboBox<Integer> cbTempo;
     private final JButton btnApply, btnPlay, btnExport, btnReset;
     private final JPanel[] numPanels = new JPanel[4], notePanels = new JPanel[4];
@@ -94,13 +95,32 @@ public class MainApp extends JFrame {
         }
 
         // Instrument list
-        Instrument[] allIns = sfLoaded
-            ? synth.getLoadedInstruments()
-            : synth.getDefaultSoundbank().getInstruments();
-        List<String> instrNames = new ArrayList<>();
+	Instrument[] allIns = synth.getAvailableInstruments();
+        Set<String> seen = new HashSet<>();
+        List<Instrument> filtered = new ArrayList<>();
         for (Instrument ins : allIns) {
-            instrNames.add(ins.getPatch().getProgram() + ": " + ins.getName());
+            Patch patch = ins.getPatch();
+            String key = patch.getBank() + ":" + patch.getProgram();
+            if (seen.add(key)) {
+                filtered.add(ins);
+            }
         }
+
+        cbInstr = new JComboBox<>(filtered.toArray(new Instrument[0]));
+        cbInstr.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                  boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof Instrument) {
+                    Instrument ins = (Instrument) value;
+                    Patch patch = ins.getPatch();
+                    setText(String.format("Bank %03d / Program %03d: %s",
+                        patch.getBank(), patch.getProgram(), ins.getName()));
+                }
+                return this;
+            }
+        });
 
         // UI controls
         cbCadence = new JComboBox<>(CadenceRegistry.getAvailableCadences().toArray(new String[0]));
@@ -117,8 +137,6 @@ public class MainApp extends JFrame {
         cbT1.setSelectedItem("Identity");
         cbT2.setSelectedItem("Identity");
         cbT3.setSelectedItem("Identity");
-
-        cbInstr = new JComboBox<>(instrNames.toArray(new String[0]));
         cbInstr.setSelectedIndex(0);
 
         Integer[] tempos = new Integer[19];
@@ -197,9 +215,24 @@ public class MainApp extends JFrame {
         btnPlay.addActionListener(e -> {
             if (lastCadence == null) return;
             if (playThread != null && playThread.isAlive()) playThread.interrupt();
-            int prog = Integer.parseInt(((String) cbInstr.getSelectedItem()).split(":")[0]);
+
+            Instrument ins = (Instrument) cbInstr.getSelectedItem();
+            Patch patch = ins.getPatch();
+            int bank = patch.getBank();
+            int prog = patch.getProgram();
             int bpm  = (Integer) cbTempo.getSelectedItem();
-            playThread = new Thread(() -> JavaxMidiPlayer.play(lastCadence, synth, prog, bpm));
+
+            playThread = new Thread(() -> {
+                try {
+                    // Define canal 0 com banco e programa corretos
+                    MidiChannel[] channels = synth.getChannels();
+                    channels[0].programChange(bank, prog);
+
+                    JavaxMidiPlayer.play(lastCadence, synth, prog, bpm);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            });
             playThread.start();
         });
 
