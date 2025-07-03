@@ -1,133 +1,128 @@
 package com.music.service;
 
 import com.music.domain.Cadence;
-import com.music.domain.Note;
 
 /**
- * Renders HTML preview and MusicXML export of a Cadence,
- * using interval-based voicing and including tempo markings.
+ * Renders a Cadence as both HTML and MusicXML using only its
+ * raw semitone interval data and tonic MIDI base.
  */
 public class ScoreRenderer {
 
     /**
-     * Creates an HTML snippet showing the interval matrix and description.
+     * Renders a simple HTML preview of the cadence's interval grid and description.
      */
     public static String render(Cadence c) {
-        StringBuilder sb = new StringBuilder("<html><body style=\"font-family:monospace;\">");
-        sb.append("<h3>").append(c.type()).append("</h3><pre>");
-        for (int[] row : c.intervals()) {
-            for (int cell : row) {
-                sb.append(String.format("%3d", cell));
+        StringBuilder sb = new StringBuilder(
+            "<html><body style=\"font-family:monospace;\">");
+        sb.append("<h3>").append(c.type()).append("</h3><pre>\n");
+
+        int[][] iv = c.intervals();
+        for (int[] row : iv) {
+            for (int x : row) {
+                sb.append(String.format("%3d", x));
             }
             sb.append("\n");
         }
-        sb.append("</pre><p>").append(c.description()).append("</p>");
-        sb.append("</body></html>");
+
+        sb.append("</pre><p>")
+          .append(c.description())
+          .append("</p></body></html>");
+
         return sb.toString();
     }
 
     /**
-     * Generates MusicXML with consistent voicing and a tempo marking.
+     * Exports the Cadence as a single-measure MusicXML file
+     * using 3/4 time, treble clef, and 1 chord per quarter.
      *
-     * @param cadence  the Cadence to export
-     * @param tempoBPM the tempo in beats per minute
-     * @return a MusicXML document as String
+     * @param cadence The cadence to export
+     * @param bpm     Beats per minute (controls tempo marking)
+     * @return A MusicXML string
      */
-    public static String toMusicXML(Cadence cadence, int tempoBPM) {
+    public static String toMusicXML(Cadence cadence, int bpm) {
+        int[][] chords = cadence.intervals();
+        int tonicMidi = cadence.getTonicMidi();
+        int keyFifths = cadence.getKeySignatureFifths();
+        int beats = chords.length;
+
         StringBuilder xml = new StringBuilder();
+        xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+           .append("<score-partwise version=\"3.1\">\n")
+           .append("  <part-list>\n")
+           .append("    <score-part id=\"P1\"><part-name>Piano</part-name></score-part>\n")
+           .append("  </part-list>\n")
+           .append("  <part id=\"P1\">\n")
+           .append("    <measure number=\"1\">\n")
+           .append("      <attributes>\n")
+           .append("        <divisions>1</divisions>\n")
+           .append("        <key><fifths>").append(keyFifths).append("</fifths></key>\n")
+           .append("        <time><beats>").append(beats).append("</beats><beat-type>4</beat-type></time>\n")
+           .append("        <clef><sign>G</sign><line>2</line></clef>\n")
+           .append("      </attributes>\n")
+           .append("      <direction placement=\"above\">\n")
+           .append("        <direction-type><metronome>\n")
+           .append("          <beat-unit>quarter</beat-unit>\n")
+           .append("          <per-minute>").append(bpm).append("</per-minute>\n")
+           .append("        </metronome></direction-type>\n")
+           .append("        <sound tempo=\"").append(bpm).append("\"/>\n")
+           .append("      </direction>\n");
 
-        // Header and part-list
-        xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        xml.append("<score-partwise version=\"3.1\">\n");
-        xml.append("  <part-list>\n");
-        xml.append("    <score-part id=\"P1\">\n");
-        xml.append("      <part-name>Cadence</part-name>\n");
-        xml.append("    </score-part>\n");
-        xml.append("  </part-list>\n");
-        xml.append("  <part id=\"P1\">\n");
-        xml.append("    <measure number=\"1\">\n");
-        xml.append("      <attributes>\n");
-        xml.append("        <divisions>1</divisions>\n");
-        xml.append("        <key><fifths>0</fifths></key>\n");
-        xml.append("        <time><beats>4</beats><beat-type>4</beat-type></time>\n");
-        xml.append("        <clef><sign>G</sign><line>2</line></clef>\n");
-        xml.append("      </attributes>\n");
+        for (int[] chord : chords) {
+            for (int i = 0; i < chord.length; i++) {
+                int midi = tonicMidi + chord[i];
+                Pitch p = midiToPitch(midi);
 
-        // Tempo marking
-        xml.append("      <direction placement=\"above\">\n");
-        xml.append("        <direction-type>\n");
-        xml.append("          <metronome>\n");
-        xml.append("            <beat-unit>quarter</beat-unit>\n");
-        xml.append("            <per-minute>").append(tempoBPM).append("</per-minute>\n");
-        xml.append("          </metronome>\n");
-        xml.append("        </direction-type>\n");
-        xml.append("        <sound tempo=\"").append(tempoBPM).append("\"/>\n");
-        xml.append("      </direction>\n");
-
-        // Notes as simultaneous quarter-note chords
-        for (int[] chord : cadence.intervals()) {
-            int[] pitches = applyVoicingFromIntervals(chord, 60); // base = C4
-
-            for (int i = 0; i < pitches.length; i++) {
-                Pitch p = midiToPitch(pitches[i]);
                 xml.append("      <note>\n");
                 if (i > 0) xml.append("        <chord/>\n");
-                xml.append("        <pitch>\n");
-                xml.append("          <step>").append(p.step).append("</step>\n");
+                xml.append("        <pitch>\n")
+                   .append("          <step>").append(p.step).append("</step>\n");
                 if (p.alter != 0) {
                     xml.append("          <alter>").append(p.alter).append("</alter>\n");
                 }
-                xml.append("          <octave>").append(p.octave).append("</octave>\n");
-                xml.append("        </pitch>\n");
-                xml.append("        <duration>1</duration>\n");
-                xml.append("        <type>quarter</type>\n");
-                xml.append("      </note>\n");
+                xml.append("          <octave>").append(p.octave).append("</octave>\n")
+                   .append("        </pitch>\n")
+                   .append("        <duration>1</duration>\n")
+                   .append("        <type>quarter</type>\n")
+                   .append("      </note>\n");
             }
         }
 
-        // Close measure/part/score
-        xml.append("    </measure>\n");
-        xml.append("  </part>\n");
-        xml.append("</score-partwise>\n");
+        xml.append("    </measure>\n")
+           .append("  </part>\n")
+           .append("</score-partwise>\n");
 
         return xml.toString();
     }
 
-    /** Adds the chord’s semitone offsets to a base MIDI pitch. */
-    private static int[] applyVoicingFromIntervals(int[] chord, int basePitch) {
-        int[] result = new int[chord.length];
-        for (int i = 0; i < chord.length; i++) {
-            result[i] = basePitch + chord[i];
-        }
-        return result;
-    }
-
-    /** Converts a MIDI note number into MusicXML pitch components. */
+    /**
+     * Converts a MIDI number to MusicXML pitch components.
+     */
     private static Pitch midiToPitch(int midi) {
-        int pc = midi % 12;
-        int octave = (midi / 12) - 1;
+        int pc  = midi % 12;
+        int oct = midi / 12 - 1;
         switch (pc) {
-            case 0:  return new Pitch("C", 0, octave);
-            case 1:  return new Pitch("C", 1, octave);
-            case 2:  return new Pitch("D", 0, octave);
-            case 3:  return new Pitch("D", 1, octave);
-            case 4:  return new Pitch("E", 0, octave);
-            case 5:  return new Pitch("F", 0, octave);
-            case 6:  return new Pitch("F", 1, octave);
-            case 7:  return new Pitch("G", 0, octave);
-            case 8:  return new Pitch("G", 1, octave);
-            case 9:  return new Pitch("A", 0, octave);
-            case 10: return new Pitch("A", 1, octave);
-            case 11: return new Pitch("B", 0, octave);
-            default: return new Pitch("C", 0, octave);
+            case 0:  return new Pitch("C",  0, oct);
+            case 1:  return new Pitch("C",  1, oct);
+            case 2:  return new Pitch("D",  0, oct);
+            case 3:  return new Pitch("D",  1, oct);
+            case 4:  return new Pitch("E",  0, oct);
+            case 5:  return new Pitch("F",  0, oct);
+            case 6:  return new Pitch("F",  1, oct);
+            case 7:  return new Pitch("G",  0, oct);
+            case 8:  return new Pitch("G",  1, oct);
+            case 9:  return new Pitch("A",  0, oct);
+            case 10: return new Pitch("A",  1, oct);
+            case 11: return new Pitch("B",  0, oct);
+            default: return new Pitch("C",  0, oct);
         }
     }
 
-    /** Simple container for MusicXML pitch fields. */
+    /** Simple record to hold pitch step, accidental, and octave */
     private static class Pitch {
         final String step;
         final int alter;
         final int octave;
+
         Pitch(String step, int alter, int octave) {
             this.step = step;
             this.alter = alter;
