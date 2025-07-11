@@ -54,7 +54,6 @@ import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.IOException;
 
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -230,19 +229,13 @@ public class MainApp extends JFrame {
 
             // 1) Raw offsets
             Cadence raw = CadenceRegistry.getCadence(cadName);
-            System.out.println("MAINAPP ► raw offsets = " +
-                Arrays.deepToString(raw.intervals()));
 
             // 2) Semitone shift
             Cadence semis = new TransposeToTonicTransformer(tonic)
                                  .transform(raw);
-            System.out.println("MAINAPP ► semitone grid = " +
-                Arrays.deepToString(semis.intervals()));
 
             // 3) MIDI anchoring
             Cadence midiCad = new Harmonizer().transform(semis);
-            System.out.println("MAINAPP ► MIDI grid = " +
-                Arrays.deepToString(midiCad.intervals()));
 
             // 4) Chain outros transforms
             Cadence c1 = transformers.get(cbT1.getSelectedItem())
@@ -253,19 +246,9 @@ public class MainApp extends JFrame {
                                      .transform(c2);
             lastCadence = c3;
 
-            System.out.println("MAINAPP ► after custom transforms:");
-            System.out.println("   c1 = " + Arrays.deepToString(c1.intervals()));
-            System.out.println("   c2 = " + Arrays.deepToString(c2.intervals()));
-            System.out.println("   c3 = " + Arrays.deepToString(c3.intervals()));
-
             // 5) Spelled notes via computeMatrix
             Note[][] spelled = KeySignatureHelper.computeMatrix(
                 midiCad.intervals(), tonic);
-            System.out.println("MAINAPP ► spelled (midiCad):");
-            for (int i = 0; i < spelled.length; i++) {
-                System.out.println("   chord " + (i+1) + " = " +
-                    Arrays.toString(spelled[i]));
-            }
 
             showGrid(notePanels[0],
                 KeySignatureHelper.computeMatrix(midiCad.intervals(), tonic));

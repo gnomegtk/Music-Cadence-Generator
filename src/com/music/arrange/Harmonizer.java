@@ -13,19 +13,15 @@ public class Harmonizer implements Transformer {
     public Harmonizer() { }
 
     public Cadence transform(Cadence input) {
-        System.out.println("=== DEBUG Harmonizer: anchoring to middle-C octave");
         int[][] src = input.intervals();
         int[][] dst = new int[src.length][];
 
         for (int i = 0; i < src.length; i++) {
             dst[i] = new int[src[i].length];
-            System.out.printf("DEBUG Harmonizer: chord %d semitones=%s%n",
-                              i+1, Arrays.toString(src[i]));
+
             for (int j = 0; j < src[i].length; j++) {
                 dst[i][j] = 60 + src[i][j];
             }
-            System.out.printf("DEBUG Harmonizer: chord %d midiNumbers=%s%n",
-                              i+1, Arrays.toString(dst[i]));
         }
 
         return new Cadence(input.type(), dst, null, input.description());

@@ -19,7 +19,6 @@ public class JavaxMidiPlayer {
         int ms = 60000 / bpm;
 
         for (int[] chord : c.intervals()) {
-            System.out.println("▶ PLAY chord MIDI=" + java.util.Arrays.toString(chord));
             for (int m : chord)        ch.noteOn(m, 100);
             Thread.sleep(ms);
             for (int m : chord)        ch.noteOff(m);

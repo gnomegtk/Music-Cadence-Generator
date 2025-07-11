@@ -36,19 +36,14 @@ public class TransposeToTonicTransformer implements Transformer {
     }
 
     public Cadence transform(Cadence raw) {
-        System.out.printf("=== DEBUG Transpose: tonic=%s shift=%d%n", tonic, shift);
         int[][] src = raw.intervals();
         int[][] dst = new int[src.length][];
 
         for (int i = 0; i < src.length; i++) {
             dst[i] = new int[src[i].length];
-            System.out.printf("DEBUG Transpose: chord %d raw=%s%n",
-                              i+1, java.util.Arrays.toString(src[i]));
             for (int j = 0; j < src[i].length; j++) {
                 dst[i][j] = src[i][j] + shift;
             }
-            System.out.printf("DEBUG Transpose: chord %d semitones=%s%n",
-                              i+1, java.util.Arrays.toString(dst[i]));
         }
 
         // Cadence(type, semitoneGrid, spelledNotes=null, description)
