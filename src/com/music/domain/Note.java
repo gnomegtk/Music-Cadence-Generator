@@ -53,10 +53,8 @@ public class Note {
 
     @Override
     public String toString() {
-        String acc = alter ==  1 ? "#" 
-                   : alter == -1 ? "b" 
-                   : "";
-        return step + acc + octave;
+        String accidental = alter == 1 ? "♯" : alter == -1 ? "♭" : "";
+        return step + accidental + octave;
     }
 
     /**

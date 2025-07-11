@@ -1,27 +1,73 @@
 package com.music.ui;
 
+import com.music.arrange.Harmonizer;
 import com.music.domain.Cadence;
 import com.music.domain.Note;
 import com.music.registry.CadenceRegistry;
 import com.music.service.JavaxMidiPlayer;
 import com.music.service.ScoreRenderer;
 import com.music.transform.Transformer;
+import com.music.transform.impl.TransposeToTonicTransformer;
 import com.music.transform.impl.*;
+import com.music.util.KeySignatureHelper;
 
-import javax.sound.midi.*;
-import javax.swing.*;
+import javax.sound.midi.Instrument;
+import javax.sound.midi.MidiSystem;
+import javax.sound.midi.Patch;
+import javax.sound.midi.Soundbank;
+import javax.sound.midi.Synthesizer;
+
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JEditorPane;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.HyperlinkEvent;
-import java.awt.*;
+
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Desktop;
+import java.awt.FlowLayout;
+import java.awt.GridLayout;
+import java.awt.Image;
+import java.awt.Toolkit;
+import java.awt.Taskbar;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.InputStream;
-import java.net.URI;
+import java.io.IOException;
+
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;            // <— import java.util.List explicitly
+import java.util.Map;
 import java.util.Set;
 
+/**
+ * Main Swing application for generating, previewing,
+ * playing, and exporting cadences.
+ */
 public class MainApp extends JFrame {
+
     private final Synthesizer synth;
     private final JComboBox<String> cbCadence, cbTonic, cbT1, cbT2, cbT3;
     private final JComboBox<Instrument> cbInstr;
@@ -33,7 +79,7 @@ public class MainApp extends JFrame {
     private Cadence lastCadence;
     private Thread playThread;
 
-    private final java.util.Map<String, Transformer> transformers = new java.util.LinkedHashMap<>() {{
+    private final Map<String, Transformer> transformers = new LinkedHashMap<>() {{
         put("Identity",            new IdentityTransformer());
         put("Add Ninth to …",      new AddNinthTransformer());
         put("Add Seventh to …",    new AddSeventhTransformer());
@@ -51,141 +97,93 @@ public class MainApp extends JFrame {
         put("Transpose Rows⇄Cols", new TransposeMatrixTransformer());
     }};
 
-    private static Note[][] computeNoteMatrix(Cadence c) {
-        int[][] iv = c.intervals();
-        int tonic = c.getTonicMidi();
-        Note[][] out = new Note[iv.length][];
-        for (int i = 0; i < iv.length; i++) {
-            out[i] = new Note[iv[i].length];
-            for (int j = 0; j < iv[i].length; j++) {
-                out[i][j] = midiToNote(tonic + iv[i][j]);
-            }
-        }
-        return out;
-    }
-
-    private static Note midiToNote(int midi) {
-        int pc = midi % 12;
-        int oct = midi / 12 - 1;
-        switch (pc) {
-            case 0:  return new Note("C",  0, oct);
-            case 1:  return new Note("C",  1, oct);
-            case 2:  return new Note("D",  0, oct);
-            case 3:  return new Note("D",  1, oct);
-            case 4:  return new Note("E",  0, oct);
-            case 5:  return new Note("F",  0, oct);
-            case 6:  return new Note("F",  1, oct);
-            case 7:  return new Note("G",  0, oct);
-            case 8:  return new Note("G",  1, oct);
-            case 9:  return new Note("A",  0, oct);
-            case 10: return new Note("A",  1, oct);
-            case 11: return new Note("B",  0, oct);
-            default: return new Note("C",  0, oct);
-        }
-    }
-
     public MainApp() throws Exception {
         super("Music Cadence Generator");
 
-        // Load icon
-        Image iconImage = Toolkit.getDefaultToolkit()
-                                 .getImage(getClass().getResource("/icons/icon.png"));
-        setIconImage(iconImage);
+        // --- Icon, Taskbar ---
+        Image icon = Toolkit.getDefaultToolkit()
+                            .getImage(getClass().getResource("/icons/icon.png"));
+        setIconImage(icon);
         if (Taskbar.isTaskbarSupported()) {
-            try { Taskbar.getTaskbar().setIconImage(iconImage); }
-            catch (UnsupportedOperationException ignored) {}
+            try { Taskbar.getTaskbar().setIconImage(icon); }
+            catch (UnsupportedOperationException ignore) {}
         }
 
-        // Window
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(1400, 850);
-        setLocationRelativeTo(null);
-
-        // Help menu
+        // --- Help menu ---
         JMenuBar menuBar = new JMenuBar();
         JMenu helpMenu = new JMenu("Help");
         JMenuItem aboutItem = new JMenuItem("About");
-        aboutItem.addActionListener(e -> showAboutDialog(iconImage));
+        aboutItem.addActionListener(e -> showAboutDialog());
         helpMenu.add(aboutItem);
         menuBar.add(helpMenu);
         setJMenuBar(menuBar);
 
-        // Synth & SoundFont
+        // --- Synth & SoundFont ---
         synth = MidiSystem.getSynthesizer();
         synth.open();
         boolean sfLoaded = false;
-        try (InputStream sf = getClass().getResourceAsStream(
-                 "/soundfonts/FluidR3_GM.sf2")) {
+        try (InputStream sf =
+                 getClass().getResourceAsStream("/soundfonts/FluidR3_GM.sf2")) {
             Soundbank sb = MidiSystem.getSoundbank(sf);
             synth.loadAllInstruments(sb);
             sfLoaded = true;
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this,
-              "Warning: Could not load SoundFont. Using default synth.",
-              "SoundFont Error", JOptionPane.WARNING_MESSAGE);
-        }
+        } catch (Exception ignore) {}
 
-        // Instrument combo (bank+program, no duplicates)
+        // --- Instrument combo ---
         Instrument[] allIns = sfLoaded
             ? synth.getLoadedInstruments()
             : synth.getDefaultSoundbank().getInstruments();
-
+        List<Instrument> insts = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        java.util.List<Instrument> filtered = new ArrayList<>();
         for (Instrument ins : allIns) {
             Patch p = ins.getPatch();
-            String key = p.getBank()+":"+p.getProgram();
-            if (seen.add(key)) filtered.add(ins);
+            String key = p.getBank() + ":" + p.getProgram();
+            if (seen.add(key)) insts.add(ins);
         }
-
-        cbInstr = new JComboBox<>(filtered.toArray(new Instrument[0]));
+        cbInstr = new JComboBox<>(insts.toArray(new Instrument[0]));
         cbInstr.setRenderer(new DefaultListCellRenderer() {
             @Override
-            public Component getListCellRendererComponent(JList<?> list,
-                                                          Object value,
-                                                          int index,
-                                                          boolean isSelected,
-                                                          boolean cellHasFocus) {
-                super.getListCellRendererComponent(
-                  list, value, index, isSelected, cellHasFocus);
-                if (value instanceof Instrument) {
-                    Instrument ins = (Instrument) value;
-                    Patch p = ins.getPatch();
-                    setText(String.format(
-                      "Bank %03d / Program %03d: %s",
-                      p.getBank(), p.getProgram(), ins.getName()));
+            public Component getListCellRendererComponent(JList<?> l,
+                                                          Object v,
+                                                          int idx,
+                                                          boolean sel,
+                                                          boolean focus) {
+                super.getListCellRendererComponent(l, v, idx, sel, focus);
+                if (v instanceof Instrument) {
+                    Instrument i = (Instrument) v;
+                    Patch p = i.getPatch();
+                    setText(String.format("Bank %03d / Program %03d: %s",
+                        p.getBank(), p.getProgram(), i.getName()));
                 }
                 return this;
             }
         });
 
-        // Cadence & transformer combos
+        // --- Cadence & tonic selectors ---
         cbCadence = new JComboBox<>(
-          CadenceRegistry.getAvailableCadences().toArray(new String[0]));
+          CadenceRegistry.getAvailableCadences().toArray(new String[0])
+        );
         cbCadence.setSelectedIndex(0);
 
         cbTonic = new JComboBox<>(new String[]{
-            "C","C#","D","Eb","E","F","F#","G","G#","A","Bb","B"
+          "C","C#","D","Eb","E","F","F#","G","G#","A","Bb","B"
         });
         cbTonic.setSelectedIndex(0);
 
-        cbT1 = new JComboBox<>(
-          transformers.keySet().toArray(new String[0]));
-        cbT2 = new JComboBox<>(
-          transformers.keySet().toArray(new String[0]));
-        cbT3 = new JComboBox<>(
-          transformers.keySet().toArray(new String[0]));
+        // --- Transformer selectors ---
+        cbT1 = new JComboBox<>(transformers.keySet().toArray(new String[0]));
+        cbT2 = new JComboBox<>(transformers.keySet().toArray(new String[0]));
+        cbT3 = new JComboBox<>(transformers.keySet().toArray(new String[0]));
         cbT1.setSelectedItem("Identity");
         cbT2.setSelectedItem("Identity");
         cbT3.setSelectedItem("Identity");
 
-        // Tempo 30–200 BPM step=1
-        java.util.List<Integer> bpmList = new ArrayList<>();
-        for (int i = 30; i <= 200; i++) bpmList.add(i);
-        cbTempo = new JComboBox<>(bpmList.toArray(new Integer[0]));
+        // --- Tempo selector ---
+        cbTempo = new JComboBox<>();
+        for (int i = 30; i <= 200; i++) cbTempo.addItem(i);
         cbTempo.setSelectedItem(60);
 
-        // Buttons
+        // --- Buttons & Previews ---
         btnApply  = new JButton("Apply");
         btnPlay   = new JButton("Play MIDI");
         btnExport = new JButton("Export XML");
@@ -193,7 +191,6 @@ public class MainApp extends JFrame {
         btnPlay.setEnabled(false);
         btnExport.setEnabled(false);
 
-        // Grids & preview
         descArea = new JTextArea(6, 80);
         descArea.setEditable(false);
         descArea.setLineWrap(true);
@@ -208,120 +205,150 @@ public class MainApp extends JFrame {
             }
         });
 
+        // --- Panels for grids ---
         for (int i = 0; i < 4; i++) {
             numPanels[i]  = new JPanel();
             notePanels[i] = new JPanel();
         }
 
-        // Disable play/export on any change
-        Runnable disableButtons = () -> {
-            btnPlay.setEnabled(false);
+        Runnable disable = () -> {
+            btnPlay .setEnabled(false);
             btnExport.setEnabled(false);
         };
-        cbCadence.addActionListener(e -> disableButtons.run());
-        cbTonic  .addActionListener(e -> disableButtons.run());
-        cbT1     .addActionListener(e -> disableButtons.run());
-        cbT2     .addActionListener(e -> disableButtons.run());
-        cbT3     .addActionListener(e -> disableButtons.run());
-        cbInstr  .addActionListener(e -> disableButtons.run());
-        cbTempo  .addActionListener(e -> disableButtons.run());
+        cbCadence.addActionListener(e -> disable.run());
+        cbTonic  .addActionListener(e -> disable.run());
+        cbT1     .addActionListener(e -> disable.run());
+        cbT2     .addActionListener(e -> disable.run());
+        cbT3     .addActionListener(e -> disable.run());
+        cbInstr  .addActionListener(e -> disable.run());
+        cbTempo  .addActionListener(e -> disable.run());
 
-        // Apply button
+        // --- APPLY action ---
         btnApply.addActionListener(e -> {
             String cadName = (String) cbCadence.getSelectedItem();
             String tonic   = (String) cbTonic.getSelectedItem();
 
-            Cadence raw     = CadenceRegistry.getCadence(cadName, "C");
-            Cadence aligned = new TransposeToTonicTransformer().transform(raw, tonic);
+            // 1) Raw offsets
+            Cadence raw = CadenceRegistry.getCadence(cadName);
+            System.out.println("MAINAPP ► raw offsets = " +
+                Arrays.deepToString(raw.intervals()));
 
-            Cadence c1 = transformers.get(cbT1.getSelectedItem()).transform(aligned, tonic);
-            Cadence c2 = transformers.get(cbT2.getSelectedItem()).transform(c1, tonic);
-            Cadence c3 = transformers.get(cbT3.getSelectedItem()).transform(c2, tonic);
+            // 2) Semitone shift
+            Cadence semis = new TransposeToTonicTransformer(tonic)
+                                 .transform(raw);
+            System.out.println("MAINAPP ► semitone grid = " +
+                Arrays.deepToString(semis.intervals()));
 
+            // 3) MIDI anchoring
+            Cadence midiCad = new Harmonizer().transform(semis);
+            System.out.println("MAINAPP ► MIDI grid = " +
+                Arrays.deepToString(midiCad.intervals()));
+
+            // 4) Chain outros transforms
+            Cadence c1 = transformers.get(cbT1.getSelectedItem())
+                                     .transform(midiCad);
+            Cadence c2 = transformers.get(cbT2.getSelectedItem())
+                                     .transform(c1);
+            Cadence c3 = transformers.get(cbT3.getSelectedItem())
+                                     .transform(c2);
             lastCadence = c3;
 
-            showGrid(numPanels[0], aligned.intervals());
-            showGrid(numPanels[1], c1.intervals());
-            showGrid(numPanels[2], c2.intervals());
-            showGrid(numPanels[3], c3.intervals());
+            System.out.println("MAINAPP ► after custom transforms:");
+            System.out.println("   c1 = " + Arrays.deepToString(c1.intervals()));
+            System.out.println("   c2 = " + Arrays.deepToString(c2.intervals()));
+            System.out.println("   c3 = " + Arrays.deepToString(c3.intervals()));
 
-            showGrid(notePanels[0], computeNoteMatrix(aligned));
-            showGrid(notePanels[1], computeNoteMatrix(c1));
-            showGrid(notePanels[2], computeNoteMatrix(c2));
-            showGrid(notePanels[3], computeNoteMatrix(c3));
+            // 5) Spelled notes via computeMatrix
+            Note[][] spelled = KeySignatureHelper.computeMatrix(
+                midiCad.intervals(), tonic);
+            System.out.println("MAINAPP ► spelled (midiCad):");
+            for (int i = 0; i < spelled.length; i++) {
+                System.out.println("   chord " + (i+1) + " = " +
+                    Arrays.toString(spelled[i]));
+            }
+
+            showGrid(notePanels[0],
+                KeySignatureHelper.computeMatrix(midiCad.intervals(), tonic));
+            showGrid(notePanels[1],
+                KeySignatureHelper.computeMatrix(c1.intervals(),    tonic));
+            showGrid(notePanels[2],
+                KeySignatureHelper.computeMatrix(c2.intervals(),    tonic));
+            showGrid(notePanels[3],
+                KeySignatureHelper.computeMatrix(c3.intervals(),    tonic));
 
             descArea.setText(
               "1) " + cbT1.getSelectedItem() + ": " + c1.description() + "\n" +
               "2) " + cbT2.getSelectedItem() + ": " + c2.description() + "\n" +
               "3) " + cbT3.getSelectedItem() + ": " + c3.description()
             );
-            htmlPane.setText(ScoreRenderer.render(c3));
 
-            btnPlay.setEnabled(true);
+            htmlPane.setText(ScoreRenderer.render(c3, tonic));
+            btnPlay .setEnabled(true);
             btnExport.setEnabled(true);
         });
 
-        // Play MIDI button
         btnPlay.addActionListener(e -> {
-            if (lastCadence == null) return;
-            if (playThread != null && playThread.isAlive())
-                playThread.interrupt();
-
             Instrument ins = (Instrument) cbInstr.getSelectedItem();
-            Patch patch    = ins.getPatch();
-            int bank       = patch.getBank();
-            int prog       = patch.getProgram();
+            Patch p        = ins.getPatch();
+            int bank       = p.getBank(), prog = p.getProgram();
             int bpm        = (Integer) cbTempo.getSelectedItem();
 
-            playThread = new Thread(() ->
-                JavaxMidiPlayer.play(lastCadence, synth, bank, prog, bpm)
-            );
-            playThread.start();
+            new Thread(() -> {
+                try {
+                    // play absolute MIDI grid only
+                    JavaxMidiPlayer.play(lastCadence, synth, bank, prog, bpm);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+            }).start();
         });
 
-        // Export XML button
+        // --- EXPORT XML action ---
         btnExport.addActionListener(e -> {
-            if (lastCadence == null) return;
             JFileChooser fc = new JFileChooser();
             fc.setDialogTitle("Save MusicXML");
-            fc.setSelectedFile(new File(
-              lastCadence.type().replaceAll("[^A-Za-z0-9]", "_")
-              + ".musicxml"
-            ));
+            String filename = lastCadence.type()
+                                .replaceAll("[^A-Za-z0-9]", "_")
+                                + ".musicxml";
+            fc.setSelectedFile(new File(filename));
+
             if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try (FileWriter w = new FileWriter(fc.getSelectedFile())) {
-                    int bpm = (Integer) cbTempo.getSelectedItem();
-                    w.write(ScoreRenderer.toMusicXML(lastCadence, bpm));
-                } catch (Exception ex) {
+                    String tonic = (String) cbTonic.getSelectedItem();
+                    int bpm      = (Integer) cbTempo.getSelectedItem();
+                    w.write(ScoreRenderer.toMusicXML(lastCadence, tonic, bpm));
+                } catch (IOException ex) {
+                    ex.printStackTrace();
                     JOptionPane.showMessageDialog(this,
-                      ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        "Error saving file:\n" + ex.getMessage(),
+                        "Save Failed",
+                        JOptionPane.ERROR_MESSAGE);
                 }
             }
         });
 
-        // Reset button
+        // --- RESET action ---
         btnReset.addActionListener(e -> {
             cbCadence.setSelectedIndex(0);
             cbTonic  .setSelectedIndex(0);
             cbT1     .setSelectedItem("Identity");
             cbT2     .setSelectedItem("Identity");
             cbT3     .setSelectedItem("Identity");
-            cbInstr  .setSelectedIndex(0);
             cbTempo  .setSelectedItem(60);
-            btnPlay  .setEnabled(false);
+            btnPlay .setEnabled(false);
             btnExport.setEnabled(false);
-            descArea .setText("");
-            htmlPane .setText("");
+            descArea.setText("");
+            htmlPane.setText("");
             for (JPanel p : numPanels)  clearGrid(p);
             for (JPanel p : notePanels) clearGrid(p);
         });
 
-        // Layout...
+        // --- Layout panels ---
         JPanel controls1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        controls1.add(new JLabel("Cadence:"));     controls1.add(cbCadence);
-        controls1.add(new JLabel("Tonic:"));       controls1.add(cbTonic);
-        controls1.add(new JLabel("Instrument:"));  controls1.add(cbInstr);
-        controls1.add(new JLabel("Tempo (BPM):")); controls1.add(cbTempo);
+        controls1.add(new JLabel("Cadence:"));    controls1.add(cbCadence);
+        controls1.add(new JLabel("Tonic:"));      controls1.add(cbTonic);
+        controls1.add(new JLabel("Instrument:")); controls1.add(cbInstr);
+        controls1.add(new JLabel("Tempo:"));      controls1.add(cbTempo);
 
         JPanel controls2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         controls2.add(new JLabel("T1:")); controls2.add(cbT1);
@@ -332,16 +359,16 @@ public class MainApp extends JFrame {
 
         JPanel matrices = new JPanel();
         matrices.setLayout(new BoxLayout(matrices, BoxLayout.X_AXIS));
-        matrices.setBorder(new EmptyBorder(10,10,10,10));
+        matrices.setBorder(new EmptyBorder(10, 10, 10, 10));
         for (int i = 0; i < 4; i++) {
             JPanel col = new JPanel();
             col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
-            String numTitle  = (i == 0 ? "Num0" : "Num→T"+i);
-            String noteTitle = (i == 0 ? "Note0": "Note→T"+i);
-            col.add(new JLabel(numTitle)); col.add(numPanels[i]);
+            col.add(new JLabel(i == 0 ? "Num0" : "Num→T" + i));
+            col.add(numPanels[i]);
             col.add(Box.createVerticalStrut(5));
-            col.add(new JLabel(noteTitle));col.add(notePanels[i]);
-            col.setBorder(new EmptyBorder(0,5,0,5));
+            col.add(new JLabel(i == 0 ? "Note0" : "Note→T" + i));
+            col.add(notePanels[i]);
+            col.setBorder(new EmptyBorder(0, 5, 0, 5));
             matrices.add(col);
         }
 
@@ -350,40 +377,27 @@ public class MainApp extends JFrame {
 
         JPanel root = new JPanel();
         root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
-        root.setBorder(new EmptyBorder(10,10,10,10));
+        root.setBorder(new EmptyBorder(10, 10, 10, 10));
         root.add(controls1);
         root.add(controls2);
         root.add(matrices);
         root.add(descScroll);
         root.add(htmlScroll);
 
-        setContentPane(root);
-    }
-
-    private void showAboutDialog(Image icon) {
-        String html = "<html><b>Music Cadence Generator</b><br/>" +
-                      "Evandro Veloso Gomes<br/>" +
-                      "<a href=\"mailto:gnome_gtk2000@yahoo.com.br\">" +
-                      "gnome_gtk2000@yahoo.com.br</a></html>";
-        JEditorPane p = new JEditorPane("text/html", html);
-        p.setEditable(false);
-        p.setOpaque(false);
-        Image scaled = icon.getScaledInstance(48,48,Image.SCALE_SMOOTH);
-        ImageIcon aboutIcon = new ImageIcon(scaled);
-        JOptionPane.showMessageDialog(this, p,
-            "About Music Cadence Generator",
-            JOptionPane.INFORMATION_MESSAGE, aboutIcon);
+        setContentPane(root); // ⬅️ This line is CRITICAL to display the GUI
+        setSize(1400, 850);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
     }
 
     private void showGrid(JPanel panel, int[][] mat) {
         panel.removeAll();
         panel.setLayout(new GridLayout(mat.length, mat[0].length, 4, 4));
-        for (int[] row : mat) {
-            for (int x : row) {
-                JLabel lbl = new JLabel(String.valueOf(x), SwingConstants.CENTER);
-                lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-                panel.add(lbl);
-            }
+        for (int[] row : mat) for (int x : row) {
+            JLabel lbl = new JLabel(String.valueOf(x),
+                                    SwingConstants.CENTER);
+            lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+            panel.add(lbl);
         }
         panel.revalidate(); panel.repaint();
     }
@@ -391,27 +405,37 @@ public class MainApp extends JFrame {
     private void showGrid(JPanel panel, Note[][] mat) {
         panel.removeAll();
         panel.setLayout(new GridLayout(mat.length, mat[0].length, 4, 4));
-        for (Note[] row : mat) {
-            for (Note n : row) {
-                JLabel lbl = new JLabel(n.toString(), SwingConstants.CENTER);
-                lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-                panel.add(lbl);
-            }
+        for (Note[] row : mat) for (Note n : row) {
+            JLabel lbl = new JLabel(n.toString(),
+                                    SwingConstants.CENTER);
+            lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+            panel.add(lbl);
         }
         panel.revalidate(); panel.repaint();
     }
 
     private void clearGrid(JPanel p) {
-        p.removeAll(); p.revalidate(); p.repaint();
+        p.removeAll();
+        p.revalidate();
+        p.repaint();
+    }
+
+    private void showAboutDialog() {
+        String html = "<html><b>Music Cadence Generator</b><br/>" +
+                      "Evandro Veloso Gomes<br/>" +
+                      "<a href=\"mailto:gnome_gtk2000@yahoo.com.br\">" +
+                      "gnome_gtk2000@yahoo.com.br</a></html>";
+        JEditorPane pane = new JEditorPane("text/html", html);
+        pane.setEditable(false);
+        pane.setOpaque(false);
+        JOptionPane.showMessageDialog(this, pane,
+            "About Music Cadence Generator", JOptionPane.INFORMATION_MESSAGE);
     }
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            try {
-                new MainApp().setVisible(true);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            try { new MainApp().setVisible(true); }
+            catch (Exception e) { e.printStackTrace(); }
         });
     }
 }

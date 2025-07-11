@@ -2,40 +2,56 @@ package com.music.transform.impl;
 
 import com.music.domain.Cadence;
 import com.music.transform.Transformer;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
- * Automatically transposes a Cadence to match a given tonic,
- * by shifting all intervals relative to the selected tonic.
- * This transformer should not appear in the UI combo box.
+ * Adds the tonic’s semitone index (C→0, C#→1, … B→11)
+ * to raw C-based offsets. Outputs pure semitone grids.
  */
 public class TransposeToTonicTransformer implements Transformer {
 
-    @Override
-    public Cadence transform(Cadence input, String tonic) {
-        if (tonic == null || tonic.equalsIgnoreCase(input.tonic())) {
-            return input;
-        }
+    private static final Map<String,Integer> TONIC_SHIFTS = new HashMap<>();
+    static {
+        TONIC_SHIFTS.put("C",  0);
+        TONIC_SHIFTS.put("C#", 1); TONIC_SHIFTS.put("Db", 1);
+        TONIC_SHIFTS.put("D",  2);
+        TONIC_SHIFTS.put("D#", 3); TONIC_SHIFTS.put("Eb", 3);
+        TONIC_SHIFTS.put("E",  4);
+        TONIC_SHIFTS.put("F",  5);
+        TONIC_SHIFTS.put("F#", 6); TONIC_SHIFTS.put("Gb", 6);
+        TONIC_SHIFTS.put("G",  7);
+        TONIC_SHIFTS.put("G#", 8); TONIC_SHIFTS.put("Ab", 8);
+        TONIC_SHIFTS.put("A",  9);
+        TONIC_SHIFTS.put("A#",10); TONIC_SHIFTS.put("Bb",10);
+        TONIC_SHIFTS.put("B", 11); TONIC_SHIFTS.put("Cb",11);
+    }
 
-        int from = input.getTonicMidi();
-        int to   = new Cadence("x", "", tonic, null, null).getTonicMidi();
-        int diff = to - from;
+    private final int shift;
+    private final String tonic;
 
-        int[][] original = input.intervals();
-        int[][] shifted  = new int[original.length][];
+    public TransposeToTonicTransformer(String tonic) {
+        this.tonic = tonic;
+        this.shift = TONIC_SHIFTS.getOrDefault(tonic, 0);
+    }
 
-        for (int i = 0; i < original.length; i++) {
-            shifted[i] = new int[original[i].length];
-            for (int j = 0; j < original[i].length; j++) {
-                shifted[i][j] = original[i][j] + diff;
+    public Cadence transform(Cadence raw) {
+        System.out.printf("=== DEBUG Transpose: tonic=%s shift=%d%n", tonic, shift);
+        int[][] src = raw.intervals();
+        int[][] dst = new int[src.length][];
+
+        for (int i = 0; i < src.length; i++) {
+            dst[i] = new int[src[i].length];
+            System.out.printf("DEBUG Transpose: chord %d raw=%s%n",
+                              i+1, java.util.Arrays.toString(src[i]));
+            for (int j = 0; j < src[i].length; j++) {
+                dst[i][j] = src[i][j] + shift;
             }
+            System.out.printf("DEBUG Transpose: chord %d semitones=%s%n",
+                              i+1, java.util.Arrays.toString(dst[i]));
         }
 
-        return new Cadence(
-            input.type(),
-            input.description(),
-            tonic,
-            shifted,
-            null
-        );
+        // Cadence(type, semitoneGrid, spelledNotes=null, description)
+        return new Cadence(raw.type(), dst, null, raw.description());
     }
 }
