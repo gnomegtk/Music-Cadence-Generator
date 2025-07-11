@@ -100,18 +100,13 @@ public class KeySignatureHelper {
         String step = label.substring(0,1);
         int alter = label.contains("♯") ? 1 : label.contains("♭") ? -1 : 0;
 
-        System.out.printf("DEBUG Spell: midi=%d key=%s pc=%d label=%s oct=%d%n",
-                          midi, key, pc, label, octave);
         return new Note(step, alter, octave);
     }
 
     public static Note[][] computeMatrix(int[][] grid, String tonic) {
-        System.out.printf("=== DEBUG computeMatrix: tonic=%s ===%n", tonic);
         Note[][] out = new Note[grid.length][];
         for (int i = 0; i < grid.length; i++) {
             out[i] = new Note[grid[i].length];
-            System.out.printf("DEBUG chord %d mids=%s%n",
-                              i+1, Arrays.toString(grid[i]));
             for (int j = 0; j < grid[i].length; j++) {
                 out[i][j] = midiToNote(grid[i][j], tonic);
             }
