@@ -9,9 +9,6 @@ import java.util.Arrays;
  * Spells absolute MIDI pitches into Note(step, alter, octave),
  * applying key‐specific enharmonic overrides for both sharps and flats,
  * and supplies MusicXML <fifths> values for the key signature.
- *
- * Only the Harmonizer knows that middle‐C = 60; this helper
- * treats all inputs as absolute MIDI numbers.
  */
 public class KeySignatureHelper {
 

@@ -76,6 +76,7 @@ public class MainApp extends JFrame {
     private final JTextArea descArea;
     private final JEditorPane htmlPane;
     private Cadence lastCadence;
+    private Cadence midiCad;
     private Thread playThread;
 
     private final Map<String, Transformer> transformers = new LinkedHashMap<>() {{
@@ -234,24 +235,24 @@ public class MainApp extends JFrame {
             Cadence semis = new TransposeToTonicTransformer(tonic)
                                  .transform(raw);
 
-            // 3) MIDI anchoring
-            Cadence midiCad = new Harmonizer().transform(semis);
-
-            // 4) Chain outros transforms
+            // 3) Chain outros transforms
             Cadence c1 = transformers.get(cbT1.getSelectedItem())
-                                     .transform(midiCad);
+                                     .transform(semis);
             Cadence c2 = transformers.get(cbT2.getSelectedItem())
                                      .transform(c1);
             Cadence c3 = transformers.get(cbT3.getSelectedItem())
                                      .transform(c2);
             lastCadence = c3;
 
-            // 5) Spelled notes via computeMatrix
-            Note[][] spelled = KeySignatureHelper.computeMatrix(
-                midiCad.intervals(), tonic);
+            // 5) Raw interval‐number grids
+            showGrid(numPanels[0], semis.intervals());
+            showGrid(numPanels[1], c1.intervals());
+            showGrid(numPanels[2], c2.intervals());
+            showGrid(numPanels[3], c3.intervals());
 
+            // 6) Spelled‐note grids
             showGrid(notePanels[0],
-                KeySignatureHelper.computeMatrix(midiCad.intervals(), tonic));
+                KeySignatureHelper.computeMatrix(semis.intervals(), tonic));
             showGrid(notePanels[1],
                 KeySignatureHelper.computeMatrix(c1.intervals(),    tonic));
             showGrid(notePanels[2],
@@ -268,6 +269,8 @@ public class MainApp extends JFrame {
             htmlPane.setText(ScoreRenderer.render(c3, tonic));
             btnPlay .setEnabled(true);
             btnExport.setEnabled(true);
+
+            midiCad = new Harmonizer().transform(lastCadence);
         });
 
         btnPlay.addActionListener(e -> {
@@ -279,7 +282,7 @@ public class MainApp extends JFrame {
             new Thread(() -> {
                 try {
                     // play absolute MIDI grid only
-                    JavaxMidiPlayer.play(lastCadence, synth, bank, prog, bpm);
+                    JavaxMidiPlayer.play(midiCad, synth, bank, prog, bpm);
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                 }
@@ -299,7 +302,7 @@ public class MainApp extends JFrame {
                 try (FileWriter w = new FileWriter(fc.getSelectedFile())) {
                     String tonic = (String) cbTonic.getSelectedItem();
                     int bpm      = (Integer) cbTempo.getSelectedItem();
-                    w.write(ScoreRenderer.toMusicXML(lastCadence, tonic, bpm));
+                    w.write(ScoreRenderer.toMusicXML(midiCad, tonic, bpm));
                 } catch (IOException ex) {
                     ex.printStackTrace();
                     JOptionPane.showMessageDialog(this,
