@@ -4,41 +4,27 @@ import com.music.domain.Cadence;
 import com.music.domain.Note;
 import com.music.util.KeySignatureHelper;
 
+import java.util.Arrays;
+
 /**
- * Renders a Cadence of absolute MIDI pitches to HTML and MusicXML.
+ * Renders a Cadence to MusicXML.
+ * All HTML/preview logic has been removed;
+ * this class now has a single responsibility.
  */
 public class ScoreRenderer {
 
     /**
-     * Build an HTML table of chords → note names.
-     */
-    public static String render(Cadence c, String tonic) {
-        Note[][] matrix = KeySignatureHelper.computeMatrix(c.intervals(), tonic);
-
-        StringBuilder html = new StringBuilder("<html><table>")
-            .append("<tr><th>Chord</th><th>Notes</th></tr>");
-
-        for (int i = 0; i < matrix.length; i++) {
-            html.append("<tr><td>")
-                .append(i + 1)
-                .append("</td><td>");
-            for (Note n : matrix[i]) {
-                html.append(n).append(" ");
-            }
-            html.append("</td></tr>");
-        }
-
-        html.append("</table></html>");
-        return html.toString();
-    }
-
-    /**
-     * Build a simple MusicXML for the Cadence at the given tempo.
+     * Build a simple MusicXML for the given cadence at the specified tempo.
+     *
+     * @param c     the cadence to export
+     * @param tonic the key in which to spell notes (e.g. "C", "Eb", "F#")
+     * @param bpm   the metronome marking in beats per minute
+     * @return a MusicXML string representing the cadence
      */
     public static String toMusicXML(Cadence c, String tonic, int bpm) {
-        int[][] midiGrid = c.intervals();
-        Note[][] matrix  = KeySignatureHelper.computeMatrix(midiGrid, tonic);
-        int fifths       = KeySignatureHelper.getKeySignatureFifths(tonic);
+        int[][] midiGrid    = c.intervals();
+        Note[][] matrix     = KeySignatureHelper.computeMatrix(midiGrid, tonic);
+        int     fifths      = KeySignatureHelper.getKeySignatureFifths(tonic);
 
         StringBuilder xml = new StringBuilder()
             .append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
@@ -64,12 +50,14 @@ public class ScoreRenderer {
 
         for (int i = 0; i < matrix.length; i++) {
             xml.append("      <!-- chord ")
-               .append(java.util.Arrays.toString(midiGrid[i]))
+               .append(Arrays.toString(midiGrid[i]))
                .append(" -->\n");
             for (int j = 0; j < matrix[i].length; j++) {
                 Note n = matrix[i][j];
                 xml.append("      <note>\n");
-                if (j > 0) xml.append("        <chord/>\n");
+                if (j > 0) {
+                    xml.append("        <chord/>\n");
+                }
                 xml.append("        <pitch>\n")
                    .append("          <step>").append(n.step()).append("</step>\n");
                 if (n.alter() != 0) {

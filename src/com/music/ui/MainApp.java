@@ -7,7 +7,6 @@ import com.music.registry.CadenceRegistry;
 import com.music.service.JavaxMidiPlayer;
 import com.music.service.ScoreRenderer;
 import com.music.transform.Transformer;
-import com.music.transform.impl.TransposeToTonicTransformer;
 import com.music.transform.impl.*;
 import com.music.util.KeySignatureHelper;
 
@@ -57,7 +56,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;            // <— import java.util.List explicitly
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -77,7 +76,6 @@ public class MainApp extends JFrame {
     private final JEditorPane htmlPane;
     private Cadence lastCadence;
     private Cadence midiCad;
-    private Thread playThread;
 
     private final Map<String, Transformer> transformers = new LinkedHashMap<>() {{
         put("Identity",            new IdentityTransformer());
@@ -100,7 +98,7 @@ public class MainApp extends JFrame {
     public MainApp() throws Exception {
         super("Music Cadence Generator");
 
-        // --- Icon, Taskbar ---
+        // --- Icon & Taskbar ---
         Image icon = Toolkit.getDefaultToolkit()
                             .getImage(getClass().getResource("/icons/icon.png"));
         setIconImage(icon);
@@ -235,7 +233,7 @@ public class MainApp extends JFrame {
             Cadence semis = new TransposeToTonicTransformer(tonic)
                                  .transform(raw);
 
-            // 3) Chain outros transforms
+            // 3) Chain other transforms
             Cadence c1 = transformers.get(cbT1.getSelectedItem())
                                      .transform(semis);
             Cadence c2 = transformers.get(cbT2.getSelectedItem())
@@ -244,35 +242,44 @@ public class MainApp extends JFrame {
                                      .transform(c2);
             lastCadence = c3;
 
-            // 5) Raw interval‐number grids
+            // 4) Numeric grids
             showGrid(numPanels[0], semis.intervals());
             showGrid(numPanels[1], c1.intervals());
             showGrid(numPanels[2], c2.intervals());
             showGrid(numPanels[3], c3.intervals());
 
-            // 6) Spelled‐note grids
-            showGrid(notePanels[0],
-                KeySignatureHelper.computeMatrix(semis.intervals(), tonic));
-            showGrid(notePanels[1],
-                KeySignatureHelper.computeMatrix(c1.intervals(),    tonic));
-            showGrid(notePanels[2],
-                KeySignatureHelper.computeMatrix(c2.intervals(),    tonic));
-            showGrid(notePanels[3],
-                KeySignatureHelper.computeMatrix(c3.intervals(),    tonic));
+            // 5) Spelled-note grids for display
+            Note[][] spelled0 = KeySignatureHelper.computeMatrix(
+                semis.intervals(), tonic);
+            Note[][] spelled1 = KeySignatureHelper.computeMatrix(
+                c1.intervals(),    tonic);
+            Note[][] spelled2 = KeySignatureHelper.computeMatrix(
+                c2.intervals(),    tonic);
+            Note[][] spelled3 = KeySignatureHelper.computeMatrix(
+                c3.intervals(),    tonic);
 
+            showGrid(notePanels[0], spelled0);
+            showGrid(notePanels[1], spelled1);
+            showGrid(notePanels[2], spelled2);
+            showGrid(notePanels[3], spelled3);
+
+            // 6) Descriptions
             descArea.setText(
               "1) " + cbT1.getSelectedItem() + ": " + c1.description() + "\n" +
               "2) " + cbT2.getSelectedItem() + ": " + c2.description() + "\n" +
               "3) " + cbT3.getSelectedItem() + ": " + c3.description()
             );
 
-            htmlPane.setText(ScoreRenderer.render(c3, tonic));
+            // 7) HTML preview without octave
+            htmlPane.setText(buildNoteTableHtml(spelled3));
+
+            // 8) Prepare MIDI playback
+            midiCad = new Harmonizer().transform(c3);
             btnPlay .setEnabled(true);
             btnExport.setEnabled(true);
-
-            midiCad = new Harmonizer().transform(lastCadence);
         });
 
+        // --- PLAY action ---
         btnPlay.addActionListener(e -> {
             Instrument ins = (Instrument) cbInstr.getSelectedItem();
             Patch p        = ins.getPatch();
@@ -281,7 +288,6 @@ public class MainApp extends JFrame {
 
             new Thread(() -> {
                 try {
-                    // play absolute MIDI grid only
                     JavaxMidiPlayer.play(midiCad, synth, bank, prog, bpm);
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
@@ -301,14 +307,16 @@ public class MainApp extends JFrame {
             if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try (FileWriter w = new FileWriter(fc.getSelectedFile())) {
                     String tonic = (String) cbTonic.getSelectedItem();
-                    int bpm      = (Integer) cbTempo.getSelectedItem();
-                    w.write(ScoreRenderer.toMusicXML(midiCad, tonic, bpm));
+                    int    bpm   = (Integer) cbTempo.getSelectedItem();
+                    w.write( ScoreRenderer.toMusicXML(midiCad, tonic, bpm) );
                 } catch (IOException ex) {
                     ex.printStackTrace();
-                    JOptionPane.showMessageDialog(this,
+                    JOptionPane.showMessageDialog(
+                        this,
                         "Error saving file:\n" + ex.getMessage(),
                         "Save Failed",
-                        JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.ERROR_MESSAGE
+                   );
                 }
             }
         });
@@ -329,7 +337,7 @@ public class MainApp extends JFrame {
             for (JPanel p : notePanels) clearGrid(p);
         });
 
-        // --- Layout panels ---
+        // --- Layout setup ---
         JPanel controls1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         controls1.add(new JLabel("Cadence:"));    controls1.add(cbCadence);
         controls1.add(new JLabel("Tonic:"));      controls1.add(cbTonic);
@@ -370,34 +378,77 @@ public class MainApp extends JFrame {
         root.add(descScroll);
         root.add(htmlScroll);
 
-        setContentPane(root); // ⬅️ This line is CRITICAL to display the GUI
+        setContentPane(root);
         setSize(1400, 850);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
     }
 
+    /**
+     * Display an int[][] grid in the given panel.
+     */
     private void showGrid(JPanel panel, int[][] mat) {
         panel.removeAll();
         panel.setLayout(new GridLayout(mat.length, mat[0].length, 4, 4));
-        for (int[] row : mat) for (int x : row) {
-            JLabel lbl = new JLabel(String.valueOf(x),
-                                    SwingConstants.CENTER);
-            lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-            panel.add(lbl);
+        for (int[] row : mat) {
+            for (int x : row) {
+                JLabel lbl = new JLabel(String.valueOf(x), SwingConstants.CENTER);
+                lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+                panel.add(lbl);
+            }
         }
-        panel.revalidate(); panel.repaint();
+        panel.revalidate();
+        panel.repaint();
     }
 
+    /**
+     * Display a Note[][] grid in the given panel (step+accidental only).
+     */
     private void showGrid(JPanel panel, Note[][] mat) {
         panel.removeAll();
         panel.setLayout(new GridLayout(mat.length, mat[0].length, 4, 4));
-        for (Note[] row : mat) for (Note n : row) {
-            JLabel lbl = new JLabel(n.toString(),
-                                    SwingConstants.CENTER);
-            lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-            panel.add(lbl);
+        for (Note[] row : mat) {
+            for (Note n : row) {
+                // use record getters step() and alter(), omit octave
+                String step       = n.step();
+                String accidental = n.alter() ==  1 ? "♯"
+                                  : n.alter() == -1 ? "♭"
+                                  : "";
+                JLabel lbl = new JLabel(step + accidental,
+                                        SwingConstants.CENTER);
+                lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+                panel.add(lbl);
+            }
         }
-        panel.revalidate(); panel.repaint();
+        panel.revalidate();
+        panel.repaint();
+    }
+
+    /**
+     * Build an HTML table (step + accidental only) for a Note grid.
+     */
+    private String buildNoteTableHtml(Note[][] mat) {
+        StringBuilder html = new StringBuilder();
+        html.append("<html><body>\n")
+            .append("<table border='1' cellpadding='4' cellspacing='0'>\n");
+        for (Note[] row : mat) {
+            html.append("  <tr>");
+            for (Note n : row) {
+                // use record getters step() and alter(), omit octave
+                String step       = n.step();
+                String accidental = n.alter() ==  1 ? "♯"
+                                  : n.alter() == -1 ? "♭"
+                                  : "";
+                html.append("<td>")
+                    .append(step)
+                    .append(accidental)
+                    .append("</td>");
+            }
+            html.append("</tr>\n");
+        }
+        html.append("</table>\n")
+            .append("</body></html>");
+        return html.toString();
     }
 
     private void clearGrid(JPanel p) {
