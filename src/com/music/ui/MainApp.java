@@ -53,6 +53,7 @@ import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.IOException;
 
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -306,9 +307,9 @@ public class MainApp extends JFrame {
 
             if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try (FileWriter w = new FileWriter(fc.getSelectedFile())) {
-                    String tonic = (String) cbTonic.getSelectedItem();
-                    int    bpm   = (Integer) cbTempo.getSelectedItem();
-                    w.write( ScoreRenderer.toMusicXML(midiCad, tonic, bpm) );
+                    int bpm = (Integer) cbTempo.getSelectedItem();
+		    System.out.println(">>> Exporting grid: " + Arrays.deepToString(midiCad.intervals()));
+                    w.write( ScoreRenderer.toMusicXMLFromMidi(midiCad, bpm) );
                 } catch (IOException ex) {
                     ex.printStackTrace();
                     JOptionPane.showMessageDialog(
@@ -316,7 +317,7 @@ public class MainApp extends JFrame {
                         "Error saving file:\n" + ex.getMessage(),
                         "Save Failed",
                         JOptionPane.ERROR_MESSAGE
-                   );
+                    );
                 }
             }
         });
