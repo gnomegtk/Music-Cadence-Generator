@@ -4,27 +4,23 @@ import com.music.domain.Cadence;
 import java.util.Arrays;
 
 /**
- * Renders a Cadence of ABSOLUTE MIDI pitches directly to MusicXML.
- * Logs the grid on entry so you can verify exactly what is being rendered.
+ * Renders a Cadence of ABSOLUTE MIDI pitches into MusicXML
+ * with two staves: staff 1 (G-clef) for alto & soprano,
+ * staff 2 (F-clef) for tenor & bass.
  */
 public class ScoreRenderer {
 
     /**
-     * Build a simple MusicXML string for the given cadence of absolute MIDI pitches.
+     * Converts a cadence with 4-voice chords into MusicXML.
      *
-     * @param midiCad the cadence whose intervals() are real MIDI numbers
-     * @param bpm     metronome marking (beats per minute)
-     * @return        a MusicXML document representing those exact MIDI pitches
+     * @param midiCad The cadence containing absolute MIDI pitches.
+     * @param bpm     Beats per minute (tempo).
+     * @return        A MusicXML document as a string.
      */
     public static String toMusicXMLFromMidi(Cadence midiCad, int bpm) {
-        // 1) pull out the 2D array of MIDI pitches
-        int[][] grid = midiCad.intervals();
+        int[][] grid   = midiCad.intervals();
+        int     chords = grid.length;
 
-        // 2) debug‐print it so you see exactly what’s going out
-        System.out.println(">>> in toMusicXMLFromMidi: " 
-            + Arrays.deepToString(grid));
-
-        // 3) now render to MusicXML without any re‐spelling logic
         StringBuilder xml = new StringBuilder()
             .append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
             .append("<score-partwise version=\"3.1\">\n")
@@ -35,9 +31,12 @@ public class ScoreRenderer {
             .append("    <measure number=\"1\">\n")
             .append("      <attributes>\n")
             .append("        <divisions>1</divisions>\n")
-            .append("        <time><beats>").append(grid.length)
+            .append("        <staves>2</staves>\n")
+            .append("        <key><fifths>0</fifths></key>\n")
+            .append("        <time><beats>").append(chords)
             .append("</beats><beat-type>4</beat-type></time>\n")
-            .append("        <clef><sign>G</sign><line>2</line></clef>\n")
+            .append("        <clef number=\"1\"><sign>G</sign><line>2</line></clef>\n")
+            .append("        <clef number=\"2\"><sign>F</sign><line>4</line></clef>\n")
             .append("      </attributes>\n")
             .append("      <direction>\n")
             .append("        <direction-type><metronome>\n")
@@ -46,40 +45,77 @@ public class ScoreRenderer {
             .append("        </metronome></direction-type>\n")
             .append("      </direction>\n");
 
-        for (int i = 0; i < grid.length; i++) {
-            xml.append("      <!-- chord ")
-               .append(Arrays.toString(grid[i]))
-               .append(" -->\n");
-            for (int j = 0; j < grid[i].length; j++) {
-                int midi = grid[i][j];
-                Pitch p  = midiToPitch(midi);
-                xml.append("      <note>\n");
-                if (j > 0) xml.append("        <chord/>\n");
-                xml.append("        <pitch>\n")
-                   .append("          <step>").append(p.step).append("</step>\n");
-                if (p.alter != 0) {
-                    xml.append("          <alter>").append(p.alter).append("</alter>\n");
-                }
-                xml.append("          <octave>").append(p.octave).append("</octave>\n")
-                   .append("        </pitch>\n")
-                   .append("        <duration>1</duration>\n")
-                   .append("        <type>quarter</type>\n")
-                   .append("      </note>\n");
-            }
+        // Staff 1: Alto then Soprano
+        for (int i = 0; i < chords; i++) {
+            int[] chord = Arrays.copyOf(grid[i], 4);
+            Arrays.sort(chord);
+            int alto    = chord[2];
+            int soprano = chord[3];
+
+            xml.append(renderNote(alto,    1, 1, false, "up"));
+            xml.append(renderNote(soprano, 1, 1, true,  "up"));
+        }
+
+        // Backup to beginning for staff 2
+        xml.append("      <backup><duration>")
+           .append(chords).append("</duration></backup>\n");
+
+        // Staff 2: Bass then Tenor
+        for (int i = 0; i < chords; i++) {
+            int[] chord = Arrays.copyOf(grid[i], 4);
+            Arrays.sort(chord);
+            int bass  = chord[0];
+            int tenor = chord[1];
+
+            xml.append(renderNote(bass,  2, 2, false, "down"));
+            xml.append(renderNote(tenor, 2, 2, true,  "down"));
         }
 
         xml.append("    </measure>\n")
            .append("  </part>\n")
            .append("</score-partwise>\n");
-
         return xml.toString();
     }
 
     /**
-     * Convert a MIDI number into MusicXML pitch data.
+     * Renders a single MusicXML <note> element.
      */
-    private static Pitch midiToPitch(int midi) {
-        int octave = (midi / 12) - 1; // MIDI 0 = C–1
+    private static String renderNote(int midiPitch, int staff, int voice, boolean chord, String stemDir) {
+        PitchInfo p = midiToPitch(midiPitch);
+        StringBuilder sb = new StringBuilder();
+        sb.append("      <note>\n");
+        if (chord) sb.append("        <chord/>\n");
+        sb.append("        <pitch>\n")
+          .append("          <step>").append(p.step).append("</step>\n");
+        if (p.alter != 0)
+          sb.append("          <alter>").append(p.alter).append("</alter>\n");
+        sb.append("          <octave>").append(p.octave).append("</octave>\n")
+          .append("        </pitch>\n")
+          .append("        <duration>1</duration>\n")
+          .append("        <voice>").append(voice).append("</voice>\n")
+          .append("        <type>quarter</type>\n")
+          .append("        <stem>").append(stemDir).append("</stem>\n")
+          .append("        <staff>").append(staff).append("</staff>\n")
+          .append("      </note>\n");
+        return sb.toString();
+    }
+
+    private static class PitchInfo {
+        final String step;
+        final int alter;
+        final int octave;
+        PitchInfo(String step, int alter, int octave) {
+            this.step   = step;
+            this.alter  = alter;
+            this.octave = octave;
+        }
+    }
+
+    /**
+     * Converts a MIDI number into step/alter/octave.
+     */
+    private static PitchInfo midiToPitch(int midi) {
+        int octave = (midi / 12) - 1;
         int pc     = midi % 12;
         String step;
         int alter;
@@ -100,17 +136,6 @@ public class ScoreRenderer {
             default: throw new IllegalArgumentException("Invalid MIDI note: " + midi);
         }
 
-        return new Pitch(step, alter, octave);
-    }
-
-    private static class Pitch {
-        final String step;
-        final int alter;
-        final int octave;
-        Pitch(String step, int alter, int octave) {
-            this.step   = step;
-            this.alter  = alter;
-            this.octave = octave;
-        }
+        return new PitchInfo(step, alter, octave);
     }
 }
