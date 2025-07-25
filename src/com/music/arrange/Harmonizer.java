@@ -3,160 +3,212 @@ package com.music.arrange;
 import com.music.domain.Cadence;
 import com.music.transform.Transformer;
 
-import java.util.Arrays;
+import java.util.*;
 
-/**
- * Harmonizer distributing triads into SATB ranges,
- * with special penultimate/final rules, smooth voice leading,
- * and enforced spacing between voices (≤ one octave apart).
- *
- * Voice ranges (MIDI):
- *   Bass:    40–60
- *   Tenor:   48–67
- *   Alto:    55–74
- *   Soprano: 60–81
- */
 public class Harmonizer implements Transformer {
 
     private static final int BASS_MIN    = 40, BASS_MAX    = 60;
     private static final int TENOR_MIN   = 48, TENOR_MAX   = 67;
     private static final int ALTO_MIN    = 55, ALTO_MAX    = 74;
     private static final int SOPRANO_MIN = 60, SOPRANO_MAX = 81;
+    private static final Random RNG      = new Random();
 
     @Override
     public Cadence transform(Cadence input) {
-        int[][] src   = input.intervals();
-        int     total = src.length;
-        int[][] out   = new int[total][];
-        int[]   prev  = null;
+        int[][] semisIn       = input.intervals();
+        int     totalChords   = semisIn.length;
+        int     fixedBassCount= totalChords;                // usa o length da cadência
+        int[][] midiGrid      = new int[totalChords][4];
+        int[]   prevMidi      = null;
 
-        for (int i = 0; i < total; i++) {
-            // sort triad offsets [root, third, fifth]
-            int[] triad = Arrays.copyOf(src[i], src[i].length);
-            Arrays.sort(triad);
+        for (int i = 0; i < totalChords; i++) {
+            // 1) dedupe & sort semitons do acorde
+            int[] tones = Arrays.stream(semisIn[i]).distinct().toArray();
+            Arrays.sort(tones);
 
-            // build SATB pitches (absolute MIDI)
-            int[] chord4 = buildSATB(triad, i, total);
+            // 2) gerar & embaralhar combinações SATB
+            List<int[]> combos = generateVoiceCombinations(tones);
+            Collections.shuffle(combos, RNG);
 
-            // smooth voice leading on all but penult/final
-            if (prev != null && i < total - 2) {
-                chord4 = voiceLead(prev, chord4);
+            // 3) filtrar voicings válidos
+            List<int[]> valid = new ArrayList<>();
+            for (int[] combo : combos) {
+                if (combo.length != 4) continue;
+
+                // 4) fixa a raiz no baixo nos últimos fixedBassCount acordes
+                if (i >= totalChords - fixedBassCount && combo[0] != tones[0]) {
+                    continue;
+                }
+
+                // 5) encaixa cada voz na sua tessitura
+                int b = fitToRange(combo[0], BASS_MIN,    BASS_MAX);
+                int t = fitToRange(combo[1], TENOR_MIN,   TENOR_MAX);
+                int a = fitToRange(combo[2], ALTO_MIN,    ALTO_MAX);
+                int s = fitToRange(combo[3], SOPRANO_MIN, SOPRANO_MAX);
+                int[] midi = { b + 60, t + 60, a + 60, s + 60 };
+
+                // 6) aplicar restrições musicais
+                if (!allUnique(midi))                      continue;
+                if (countInterval(midi, 12) > 1)           continue;
+                if (countInterval(midi, 7)  > 1)           continue;
+                if (!bassTenorWithinFifth(midi))           continue;
+                if (!noVoiceSpacingExceeds(midi, 12))      continue;
+                if (prevMidi != null && hasParallelFifth(prevMidi, midi)) {
+                    continue;
+                }
+
+                valid.add(new int[]{ b, t, a, s });
             }
 
-            // enforce ≤1-octave spacing between adjacent voices
-            chord4 = enforceSpacing(chord4);
+            // 7) escolhe voicing válido ou fallback
+            int[] chosenOffsets = valid.isEmpty()
+                ? dynamicFallback(tones, prevMidi)
+                : valid.get(RNG.nextInt(valid.size()));
 
-            // record for next
-            Arrays.sort(chord4);
-            prev = Arrays.copyOf(chord4, chord4.length);
+            // 8) converte offsets → MIDI e força espaçamento
+            int[] midi = new int[4];
+            for (int v = 0; v < 4; v++) {
+                midi[v] = chosenOffsets[v] + 60;
+            }
+            enforceSpacingMidi(midi);
 
-            out[i] = chord4;
+            midiGrid[i] = midi;
+            prevMidi    = midi;
         }
 
-        return new Cadence(input.type(), out, null, input.description());
+        return new Cadence(input.type(), midiGrid, null, input.description());
     }
 
-    /**
-     * Assigns triad tones to SATB, applies special rules,
-     * and fits into each voice’s range.
-     */
-    private int[] buildSATB(int[] triad, int index, int total) {
-        int rootMidi  = 60 + triad[0];
-        int thirdMidi = 60 + triad[1];
-        int fifthMidi = 60 + triad[2];
-
-        int bass, tenor, alto, soprano;
-
-        // Penultimate: duplicate the third an octave up
-        if (index == total - 2) {
-            bass    = rootMidi;
-            tenor   = thirdMidi;
-            alto    = fifthMidi;
-            soprano = thirdMidi + 12;
-
-        // Final: SATB root-position (root, 3rd, 5th, root+12)
-        } else if (index == total - 1) {
-            bass    = rootMidi;
-            tenor   = rootMidi + 4;
-            alto    = rootMidi + 7;
-            soprano = rootMidi + 12;
-
-        // Default: root, third, fifth, root+12
+    private List<int[]> generateVoiceCombinations(int[] tones) {
+        List<int[]> out = new ArrayList<>();
+        if (tones.length >= 4) {
+            out.addAll(permutations(Arrays.asList(
+                tones[0], tones[1], tones[2], tones[3]
+            )));
         } else {
-            bass    = rootMidi;
-            tenor   = thirdMidi;
-            alto    = fifthMidi;
-            soprano = rootMidi + 12;
-        }
-
-        // Fit each voice into its range
-        bass    = fitToRange(bass,    BASS_MIN,    BASS_MAX);
-        tenor   = fitToRange(tenor,   TENOR_MIN,   TENOR_MAX);
-        alto    = fitToRange(alto,    ALTO_MIN,    ALTO_MAX);
-        soprano = fitToRange(soprano, SOPRANO_MIN, SOPRANO_MAX);
-
-        return new int[]{ bass, tenor, alto, soprano };
-    }
-
-    /** Shift pitch by octaves to fall within [min,max]. */
-    private int fitToRange(int pitch, int min, int max) {
-        while (pitch < min)   pitch += 12;
-        while (pitch > max)   pitch -= 12;
-        return pitch;
-    }
-
-    /**
-     * Voice leading: shift each voice by –12/0/+12 semitones
-     * to minimize motion from corresponding voice in prev.
-     */
-    private int[] voiceLead(int[] prev, int[] curr) {
-        int n = curr.length;
-        int[] out = new int[n];
-        for (int i = 0; i < n; i++) {
-            out[i] = shiftNearest(curr[i], prev[i]);
+            for (int t0 : tones) {
+                List<Integer> combo = new ArrayList<>();
+                for (int x : tones) combo.add(x);
+                combo.add(t0 + 12);
+                out.addAll(permutations(combo));
+            }
         }
         return out;
     }
 
-    /** Pick shift of –12,0,+12 to get closest to target. */
-    private int shiftNearest(int orig, int target) {
-        int best     = orig;
-        int bestDiff = Math.abs(orig - target);
-        for (int shift : new int[]{ -12, +12 }) {
-            int cand = orig + shift;
-            int diff = Math.abs(cand - target);
-            if (diff < bestDiff) {
-                bestDiff = diff;
-                best     = cand;
+    private List<int[]> permutations(List<Integer> list) {
+        List<int[]> acc = new ArrayList<>();
+        permuteHelper(list, 0, acc);
+        return acc;
+    }
+
+    private void permuteHelper(List<Integer> list, int idx, List<int[]> acc) {
+        if (idx == list.size()) {
+            acc.add(list.stream().mapToInt(x -> x).toArray());
+            return;
+        }
+        for (int j = idx; j < list.size(); j++) {
+            Collections.swap(list, idx, j);
+            permuteHelper(list, idx + 1, acc);
+            Collections.swap(list, idx, j);
+        }
+    }
+
+    private int fitToRange(int offset, int min, int max) {
+        int midi = offset + 60;
+        while (midi < min) { offset += 12; midi += 12; }
+        while (midi > max) { offset -= 12; midi -= 12; }
+        return offset;
+    }
+
+    private boolean allUnique(int[] p) {
+        Set<Integer> seen = new HashSet<>();
+        for (int x : p) if (!seen.add(x)) return false;
+        return true;
+    }
+
+    private int countInterval(int[] p, int sem) {
+        int c = 0;
+        for (int i = 0; i < p.length; i++) {
+            for (int j = i + 1; j < p.length; j++) {
+                if (Math.abs(p[j] - p[i]) == sem) c++;
             }
         }
-        return best;
+        return c;
+    }
+
+    private boolean bassTenorWithinFifth(int[] p) {
+        return Math.abs(p[1] - p[0]) <= 7;
+    }
+
+    private boolean noVoiceSpacingExceeds(int[] p, int max) {
+        for (int i = 0; i < p.length - 1; i++) {
+            if (p[i + 1] - p[i] > max) return false;
+        }
+        return true;
+    }
+
+    private boolean hasParallelFifth(int[] prev, int[] curr) {
+        for (int v = 1; v < 4; v++) {
+            int d1 = prev[v] - prev[0], d2 = curr[v] - curr[0];
+            if (Math.abs(d1) == 7 && Math.abs(d2) == 7
+             && (curr[0] - prev[0]) * (curr[v] - prev[v]) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int[] dynamicFallback(int[] tones, int[] prev) {
+        int r = tones[0];
+        int t = tones.length > 1 ? tones[1] : r + 4;
+        int f = tones.length > 2 ? tones[2] : r + 7;
+
+        int[][] cands = {
+            {r, t, f, r + 12},
+            {r, t, f, t + 12},
+            {r, t, f, f + 12}
+        };
+        for (int[] c : cands) {
+            int b  = fitToRange(c[0], BASS_MIN,    BASS_MAX);
+            int tn = fitToRange(c[1], TENOR_MIN,   TENOR_MAX);
+            int al = fitToRange(c[2], ALTO_MIN,    ALTO_MAX);
+            int sp = fitToRange(c[3], SOPRANO_MIN, SOPRANO_MAX);
+            int[] midi = {b + 60, tn + 60, al + 60, sp + 60};
+
+            if (allUnique(midi)
+             && countInterval(midi, 12) <= 1
+             && countInterval(midi, 7)  <= 1
+             && bassTenorWithinFifth(midi)
+             && noVoiceSpacingExceeds(midi, 12)
+             && (prev == null || !hasParallelFifth(prev, midi))) {
+                return new int[]{b, tn, al, sp};
+            }
+        }
+
+        // final fallback: root–3rd–5th–root+12
+        return new int[]{
+            fitToRange(tones[0],         BASS_MIN,    BASS_MAX),
+            fitToRange(tones.length>1 ? tones[1] : tones[0]+4, TENOR_MIN,   TENOR_MAX),
+            fitToRange(tones.length>2 ? tones[2] : tones[0]+7, ALTO_MIN,    ALTO_MAX),
+            fitToRange(tones[0] + 12,    SOPRANO_MIN, SOPRANO_MAX)
+        };
     }
 
     /**
-     * Enforce no more than 12 semitones between adjacent voices:
-     * tries lowering the upper voice by an octave if possible,
-     * otherwise raising the lower voice by an octave.
+     * Iteratively lower any voice that is more than an octave above its
+     * lower neighbor until all adjacent intervals ≤ 12 semitones.
      */
-    private int[] enforceSpacing(int[] voices) {
-        // voices order: [bass,tenor,alto,soprano]
-        int[] mins = { BASS_MIN, TENOR_MIN, ALTO_MIN, SOPRANO_MIN };
-        int[] maxs = { BASS_MAX, TENOR_MAX, ALTO_MAX, SOPRANO_MAX };
-
-        for (int i = 0; i < 3; i++) {
-            int lower = voices[i], upper = voices[i+1];
-            int gap = upper - lower;
-            if (gap > 12) {
-                // try lower upper by octave
-                if (upper - 12 >= mins[i+1]) {
-                    voices[i+1] = upper - 12;
-                }
-                // else try raising lower voice
-                else if (lower + 12 <= maxs[i]) {
-                    voices[i] = lower + 12;
+    private void enforceSpacingMidi(int[] midi) {
+        boolean changed;
+        do {
+            changed = false;
+            for (int i = 0; i < midi.length - 1; i++) {
+                if (midi[i + 1] - midi[i] > 12) {
+                    midi[i + 1] -= 12;
+                    changed = true;
                 }
             }
-        }
-        return voices;
+        } while (changed);
     }
 }
