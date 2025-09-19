@@ -94,6 +94,8 @@ public class MainApp extends JFrame {
         put("Retrograde",          new RetrogradeTransformer());
         put("Transpose +2",        new TransposeTransformer());
         put("Transpose Rows⇄Cols", new TransposeMatrixTransformer());
+	put("Polynomial Derivative", new PolynomialDerivativeTransformer());
+	put("Polynomial Integral",   new PolynomialIntegralTransformer());
     }};
 
     public MainApp() throws Exception {

@@ -23,25 +23,33 @@ public class KeySignatureHelper {
     private static final Map<String,String> MINOR_TO_MAJOR = new LinkedHashMap<>();
 
     static {
-        // Major overrides
-        // C: D♯→E♭
-        OVERRIDES.put("C", map(3,"E♭"));
-        // G: D♯→E♭, A♯→B♭
-        OVERRIDES.put("G", map(3,"E♭", 10,"B♭"));
-        // F: G♯→A♭, B→B♭
-        OVERRIDES.put("F", map(8,"A♭", 11,"B♭"));
-        // Bb, Eb, Ab similarly...
-        OVERRIDES.put("Bb", map(3,"E♭",10,"B♭"));
-        OVERRIDES.put("Eb", map(3,"E♭",8,"A♭",10,"B♭"));
-        OVERRIDES.put("Ab", map(1,"D♭",3,"E♭",8,"A♭",10,"B♭"));
-        // C# / Db: C→B♯, F→E♯, B→B♯
-        OVERRIDES.put("C#", map(0,"B♯",5,"E♯",11,"B♯"));
-        OVERRIDES.put("Db", map(0,"B♯",5,"E♯",11,"B♯"));
-        // F# / Gb: E→E♯
-        OVERRIDES.put("F#", map(4,"E♯"));
-        OVERRIDES.put("Gb", map(4,"E♯"));
-        // B: F→E♯
-        OVERRIDES.put("B", map(5,"E♯"));
+        OVERRIDES.put("C",  map(3,"E♭", 8,"A♭", 10,"B♭"));               // C major
+        OVERRIDES.put("G",  map(3,"E♭", 10,"B♭"));                       // G major
+        OVERRIDES.put("D",  map(1,"C♯", 3,"E♭", 10,"B♭"));               // D major
+        OVERRIDES.put("A",  map(1,"C♯", 3,"E♭", 6,"F♯"));                // A major
+        OVERRIDES.put("E",  map(1,"C♯", 4,"E♯", 6,"F♯"));                // E major
+        OVERRIDES.put("B",  map(1,"C♯", 4,"E♯", 6,"F♯"));                // B major
+        OVERRIDES.put("F#", map(1,"C♯", 4,"E♯", 6,"F♯"));                // F♯ major
+        OVERRIDES.put("C#", map(0,"B♯", 5,"E♯", 11,"B♯"));               // C♯ major
+
+        OVERRIDES.put("F",  map(8,"A♭", 11,"B♭"));                       // F major
+        OVERRIDES.put("Bb", map(3,"E♭", 10,"B♭"));                       // B♭ major
+        OVERRIDES.put("Eb", map(3,"E♭", 8,"A♭", 10,"B♭"));               // E♭ major
+        OVERRIDES.put("Ab", map(1,"D♭", 3,"E♭", 8,"A♭", 10,"B♭"));       // A♭ major
+
+	OVERRIDES.put("Am",  map(3,"E♭", 8,"A♭", 10,"B♭"));              // A minor
+        OVERRIDES.put("Em",  map(3,"E♭", 10,"B♭"));                      // E minor
+        OVERRIDES.put("Bm",  map(1,"C♯", 3,"E♭", 10,"B♭"));              // B minor
+        OVERRIDES.put("F#m", map(1,"C♯", 4,"E♯", 6,"F♯"));              // F♯ minor
+        OVERRIDES.put("C#m", map(0,"B♯", 5,"E♯", 11,"B♯"));             // C♯ minor
+        OVERRIDES.put("G#m", map(1,"C♯", 4,"E♯", 6,"F♯"));              // G♯ minor
+        OVERRIDES.put("D#m", map(1,"C♯", 4,"E♯", 6,"F♯"));              // D♯ minor
+        OVERRIDES.put("A#m", map(1,"C♯", 4,"E♯", 6,"F♯"));              // A♯ minor
+
+        OVERRIDES.put("Dm",  map(3,"E♭", 8,"A♭", 10,"B♭"));              // D minor
+        OVERRIDES.put("Gm",  map(3,"E♭", 10,"B♭"));                      // G minor
+        OVERRIDES.put("Cm",  map(3,"E♭", 8,"A♭", 10,"B♭"));              // C minor
+        OVERRIDES.put("Fm",  map(1,"D♭", 3,"E♭", 8,"A♭", 10,"B♭"));      // F minor
 
         // MusicXML <fifths>
         FIFTHS.put("C", 0);  FIFTHS.put("G", 1);  FIFTHS.put("D", 2);
