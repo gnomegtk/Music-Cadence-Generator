@@ -21,6 +21,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JEditorPane;
 import javax.swing.JFileChooser;
@@ -42,6 +43,7 @@ import javax.swing.event.HyperlinkEvent;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Desktop;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.Image;
@@ -71,7 +73,9 @@ public class MainApp extends JFrame {
     private final JComboBox<String> cbCadence, cbTonic, cbT1, cbT2, cbT3;
     private final JComboBox<Instrument> cbInstr;
     private final JComboBox<Integer> cbTempo;
-    private final JButton btnApply, btnPlay, btnExport, btnReset;
+    private final JButton btnApply, btnPlay, btnExport, btnExportMidi, btnReset;
+    private final JCheckBox cbVoiceLeading;
+    private final JCheckBox cbDodecafonize;
     private final JPanel[] numPanels = new JPanel[4], notePanels = new JPanel[4];
     private final JTextArea descArea;
     private final JEditorPane htmlPane;
@@ -94,8 +98,12 @@ public class MainApp extends JFrame {
         put("Retrograde",          new RetrogradeTransformer());
         put("Transpose +2",        new TransposeTransformer());
         put("Transpose Rows⇄Cols", new TransposeMatrixTransformer());
-	put("Polynomial Derivative", new PolynomialDerivativeTransformer());
-	put("Polynomial Integral",   new PolynomialIntegralTransformer());
+        put("Polynomial Derivative", new PolynomialDerivativeTransformer());
+        put("Polynomial Integral",   new PolynomialIntegralTransformer());
+        // VoiceLeadingOptimizer is NOT included here, applied separately
+        put("Modal Interchange",        new ModalInterchangeTransformer());
+        put("Chromatic Mediants",       new ChromaticMediantsTransformer());
+        put("Secondary Dominants",      new SecondaryDominantsTransformer());
     }};
 
     public MainApp() throws Exception {
@@ -179,6 +187,9 @@ public class MainApp extends JFrame {
         cbT2.setSelectedItem("Identity");
         cbT3.setSelectedItem("Identity");
 
+        cbVoiceLeading = new JCheckBox("Optimize Voice Leading");
+        cbDodecafonize = new JCheckBox("Dodecafonize (12-tone row)");
+
         // --- Tempo selector ---
         cbTempo = new JComboBox<>();
         for (int i = 30; i <= 200; i++) cbTempo.addItem(i);
@@ -188,9 +199,11 @@ public class MainApp extends JFrame {
         btnApply  = new JButton("Apply");
         btnPlay   = new JButton("Play MIDI");
         btnExport = new JButton("Export XML");
+        btnExportMidi = new JButton("Export MIDI");
         btnReset  = new JButton("Reset");
         btnPlay.setEnabled(false);
         btnExport.setEnabled(false);
+        btnExportMidi.setEnabled(false);
 
         descArea = new JTextArea(6, 80);
         descArea.setEditable(false);
@@ -215,6 +228,7 @@ public class MainApp extends JFrame {
         Runnable disable = () -> {
             btnPlay .setEnabled(false);
             btnExport.setEnabled(false);
+            btnExportMidi.setEnabled(false);
         };
         cbCadence.addActionListener(e -> disable.run());
         cbTonic  .addActionListener(e -> disable.run());
@@ -243,15 +257,25 @@ public class MainApp extends JFrame {
                                      .transform(c1);
             Cadence c3 = transformers.get(cbT3.getSelectedItem())
                                      .transform(c2);
+
+            if (cbVoiceLeading.isSelected()) {
+               c3 = new VoiceLeadingOptimizerTransformer().transform(c3);
+            }
+
+            if (cbDodecafonize.isSelected()) {
+               c3 = new DodecafonizeTransformer().transform(c3);
+            }
+
+            
             lastCadence = c3;
 
-            // 4) Numeric grids
+            // 5) Numeric grids
             showGrid(numPanels[0], semis.intervals());
             showGrid(numPanels[1], c1.intervals());
             showGrid(numPanels[2], c2.intervals());
             showGrid(numPanels[3], c3.intervals());
 
-            // 5) Spelled-note grids for display
+            // 6) Spelled-note grids for display
             Note[][] spelled0 = KeySignatureHelper.computeMatrix(
                 semis.intervals(), tonic);
             Note[][] spelled1 = KeySignatureHelper.computeMatrix(
@@ -266,20 +290,22 @@ public class MainApp extends JFrame {
             showGrid(notePanels[2], spelled2);
             showGrid(notePanels[3], spelled3);
 
-            // 6) Descriptions
+            // 7) Descriptions
             descArea.setText(
               "1) " + cbT1.getSelectedItem() + ": " + c1.description() + "\n" +
               "2) " + cbT2.getSelectedItem() + ": " + c2.description() + "\n" +
-              "3) " + cbT3.getSelectedItem() + ": " + c3.description()
+              "3) " + cbT3.getSelectedItem() + ": " + c3.description() +
+              (cbVoiceLeading.isSelected() ? "\n+ Voice Leading Optimization applied" : "")
             );
 
-            // 7) HTML preview without octave
+            // 8) HTML preview without octave
             htmlPane.setText(buildNoteTableHtml(spelled3));
 
-            // 8) Prepare MIDI playback
+            // 9) Prepare MIDI playback
             midiCad = new Harmonizer().transform(c3);
             btnPlay .setEnabled(true);
             btnExport.setEnabled(true);
+            btnExportMidi.setEnabled(true);
         });
 
         // --- PLAY action ---
@@ -310,13 +336,37 @@ public class MainApp extends JFrame {
             if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try (FileWriter w = new FileWriter(fc.getSelectedFile())) {
                     int bpm = (Integer) cbTempo.getSelectedItem();
-		    System.out.println(">>> Exporting grid: " + Arrays.deepToString(midiCad.intervals()));
+                    System.out.println(">>> Exporting grid: " + Arrays.deepToString(midiCad.intervals()));
                     w.write( ScoreRenderer.toMusicXMLFromMidi(midiCad, bpm) );
                 } catch (IOException ex) {
                     ex.printStackTrace();
                     JOptionPane.showMessageDialog(
                         this,
                         "Error saving file:\n" + ex.getMessage(),
+                        "Save Failed",
+                        JOptionPane.ERROR_MESSAGE
+                    );
+                }
+            }
+        });
+
+        // --- EXPORT MIDI action ---
+        btnExportMidi.addActionListener(e -> {
+            JFileChooser fc = new JFileChooser();
+            fc.setDialogTitle("Save MIDI");
+            String filename = lastCadence.type()
+                                .replaceAll("[^A-Za-z0-9]", "_")
+                                + ".mid";
+            fc.setSelectedFile(new File(filename));
+
+            if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                try {
+                    int bpm = (Integer) cbTempo.getSelectedItem();
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Error saving MIDI:\n" + ex.getMessage(),
                         "Save Failed",
                         JOptionPane.ERROR_MESSAGE
                     );
@@ -332,8 +382,11 @@ public class MainApp extends JFrame {
             cbT2     .setSelectedItem("Identity");
             cbT3     .setSelectedItem("Identity");
             cbTempo  .setSelectedItem(60);
+            cbVoiceLeading.setSelected(false);
+            cbDodecafonize.setSelected(false);
             btnPlay .setEnabled(false);
             btnExport.setEnabled(false);
+            btnExportMidi.setEnabled(false);
             descArea.setText("");
             htmlPane.setText("");
             for (JPanel p : numPanels)  clearGrid(p);
@@ -351,8 +404,11 @@ public class MainApp extends JFrame {
         controls2.add(new JLabel("T1:")); controls2.add(cbT1);
         controls2.add(new JLabel("T2:")); controls2.add(cbT2);
         controls2.add(new JLabel("T3:")); controls2.add(cbT3);
+        controls2.add(cbVoiceLeading);
+        controls2.add(cbDodecafonize);
         controls2.add(btnApply); controls2.add(btnPlay);
-        controls2.add(btnExport);controls2.add(btnReset);
+        controls2.add(btnExport); controls2.add(btnExportMidi);
+        controls2.add(btnReset);
 
         JPanel matrices = new JPanel();
         matrices.setLayout(new BoxLayout(matrices, BoxLayout.X_AXIS));
@@ -361,10 +417,18 @@ public class MainApp extends JFrame {
             JPanel col = new JPanel();
             col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
             col.add(new JLabel(i == 0 ? "Num0" : "Num→T" + i));
-            col.add(numPanels[i]);
+
+            JScrollPane numScroll = new JScrollPane(numPanels[i]);
+            numScroll.setPreferredSize(new Dimension(200, 100));
+            col.add(numScroll);
+
             col.add(Box.createVerticalStrut(5));
             col.add(new JLabel(i == 0 ? "Note0" : "Note→T" + i));
-            col.add(notePanels[i]);
+
+            JScrollPane noteScroll = new JScrollPane(notePanels[i]);
+            noteScroll.setPreferredSize(new Dimension(200, 100));
+            col.add(noteScroll);
+
             col.setBorder(new EmptyBorder(0, 5, 0, 5));
             matrices.add(col);
         }
@@ -392,6 +456,12 @@ public class MainApp extends JFrame {
      */
     private void showGrid(JPanel panel, int[][] mat) {
         panel.removeAll();
+        if (mat.length == 0 || mat[0].length == 0) {
+            panel.revalidate();
+            panel.repaint();
+            return;
+        }
+
         panel.setLayout(new GridLayout(mat.length, mat[0].length, 4, 4));
         for (int[] row : mat) {
             for (int x : row) {
@@ -400,29 +470,33 @@ public class MainApp extends JFrame {
                 panel.add(lbl);
             }
         }
+
         panel.revalidate();
         panel.repaint();
     }
 
     /**
-     * Display a Note[][] grid in the given panel (step+accidental only).
+     * Display a Note[][] grid in the given panel (step + accidental only).
      */
     private void showGrid(JPanel panel, Note[][] mat) {
         panel.removeAll();
+        if (mat.length == 0 || mat[0].length == 0) {
+            panel.revalidate();
+            panel.repaint();
+            return;
+        }
+
         panel.setLayout(new GridLayout(mat.length, mat[0].length, 4, 4));
         for (Note[] row : mat) {
             for (Note n : row) {
-                // use record getters step() and alter(), omit octave
-                String step       = n.step();
-                String accidental = n.alter() ==  1 ? "♯"
-                                  : n.alter() == -1 ? "♭"
-                                  : "";
-                JLabel lbl = new JLabel(step + accidental,
-                                        SwingConstants.CENTER);
+                String step = n.step();
+                String accidental = n.alter() == 1 ? "♯" : n.alter() == -1 ? "♭" : "";
+                JLabel lbl = new JLabel(step + accidental, SwingConstants.CENTER);
                 lbl.setBorder(BorderFactory.createLineBorder(Color.GRAY));
                 panel.add(lbl);
             }
         }
+
         panel.revalidate();
         panel.repaint();
     }
@@ -437,7 +511,7 @@ public class MainApp extends JFrame {
         for (Note[] row : mat) {
             html.append("  <tr>");
             for (Note n : row) {
-                // use record getters step() and alter(), omit octave
+                // use getters step() and alter(), omit octave
                 String step       = n.step();
                 String accidental = n.alter() ==  1 ? "♯"
                                   : n.alter() == -1 ? "♭"
@@ -454,12 +528,18 @@ public class MainApp extends JFrame {
         return html.toString();
     }
 
+    /**
+     * Clear a grid panel.
+     */
     private void clearGrid(JPanel p) {
         p.removeAll();
         p.revalidate();
         p.repaint();
     }
 
+    /**
+     * Show About dialog with author information.
+     */
     private void showAboutDialog() {
         String html = "<html><b>Music Cadence Generator</b><br/>" +
                       "Evandro Veloso Gomes<br/>" +
@@ -472,6 +552,9 @@ public class MainApp extends JFrame {
             "About Music Cadence Generator", JOptionPane.INFORMATION_MESSAGE);
     }
 
+    /**
+     * Application entry point.
+     */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             try { new MainApp().setVisible(true); }
