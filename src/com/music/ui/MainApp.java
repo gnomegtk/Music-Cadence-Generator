@@ -247,43 +247,46 @@ public class MainApp extends JFrame {
             Cadence raw = CadenceRegistry.getCadence(cadName);
 
             // 2) Semitone shift
-            Cadence semis = new TransposeToTonicTransformer(tonic)
-                                 .transform(raw);
+            Cadence semis = new TransposeToTonicTransformer(tonic).transform(raw);
 
-            // 3) Chain other transforms
-            Cadence c1 = transformers.get(cbT1.getSelectedItem())
-                                     .transform(semis);
-            Cadence c2 = transformers.get(cbT2.getSelectedItem())
-                                     .transform(c1);
-            Cadence c3 = transformers.get(cbT3.getSelectedItem())
-                                     .transform(c2);
+            // 3) Chain other transforms (T1, T2, T3)
+            Cadence c1 = transformers.get(cbT1.getSelectedItem()).transform(semis);
+            Cadence c2 = transformers.get(cbT2.getSelectedItem()).transform(c1);
+            Cadence c3 = transformers.get(cbT3.getSelectedItem()).transform(c2);
+
+            // Preserve the description of T3 BEFORE post-processors
+            String descT3 = c3.description();
+
+            // 4) Post-processors applied only at the end (do NOT affect line 3 description)
+            Cadence cFinal = c3;
+            StringBuilder desc = new StringBuilder();
+            desc.append("1) ").append(cbT1.getSelectedItem()).append(": ").append(c1.description()).append("\n");
+            desc.append("2) ").append(cbT2.getSelectedItem()).append(": ").append(c2.description()).append("\n");
+            desc.append("3) ").append(cbT3.getSelectedItem()).append(": ").append(descT3);
 
             if (cbVoiceLeading.isSelected()) {
-               c3 = new VoiceLeadingOptimizerTransformer().transform(c3);
+                cFinal = new VoiceLeadingOptimizerTransformer().transform(cFinal);
+                desc.append("\n+ Voice Leading Optimization applied");
             }
 
             if (cbDodecafonize.isSelected()) {
-               c3 = new DodecafonizeTransformer().transform(c3);
+                cFinal = new DodecafonizeTransformer().transform(cFinal);
+                desc.append("\n+ Dodecafonize applied");
             }
 
-            
-            lastCadence = c3;
+            lastCadence = cFinal;
 
             // 5) Numeric grids
             showGrid(numPanels[0], semis.intervals());
             showGrid(numPanels[1], c1.intervals());
             showGrid(numPanels[2], c2.intervals());
-            showGrid(numPanels[3], c3.intervals());
+            showGrid(numPanels[3], cFinal.intervals());
 
             // 6) Spelled-note grids for display
-            Note[][] spelled0 = KeySignatureHelper.computeMatrix(
-                semis.intervals(), tonic);
-            Note[][] spelled1 = KeySignatureHelper.computeMatrix(
-                c1.intervals(),    tonic);
-            Note[][] spelled2 = KeySignatureHelper.computeMatrix(
-                c2.intervals(),    tonic);
-            Note[][] spelled3 = KeySignatureHelper.computeMatrix(
-                c3.intervals(),    tonic);
+            Note[][] spelled0 = KeySignatureHelper.computeMatrix(semis.intervals(), tonic);
+            Note[][] spelled1 = KeySignatureHelper.computeMatrix(c1.intervals(),    tonic);
+            Note[][] spelled2 = KeySignatureHelper.computeMatrix(c2.intervals(),    tonic);
+            Note[][] spelled3 = KeySignatureHelper.computeMatrix(cFinal.intervals(),tonic);
 
             showGrid(notePanels[0], spelled0);
             showGrid(notePanels[1], spelled1);
@@ -291,18 +294,13 @@ public class MainApp extends JFrame {
             showGrid(notePanels[3], spelled3);
 
             // 7) Descriptions
-            descArea.setText(
-              "1) " + cbT1.getSelectedItem() + ": " + c1.description() + "\n" +
-              "2) " + cbT2.getSelectedItem() + ": " + c2.description() + "\n" +
-              "3) " + cbT3.getSelectedItem() + ": " + c3.description() +
-              (cbVoiceLeading.isSelected() ? "\n+ Voice Leading Optimization applied" : "")
-            );
+            descArea.setText(desc.toString());
 
-            // 8) HTML preview without octave
+            // 8) HTML preview without octave (final)
             htmlPane.setText(buildNoteTableHtml(spelled3));
 
             // 9) Prepare MIDI playback
-            midiCad = new Harmonizer().transform(c3);
+            midiCad = new Harmonizer().transform(cFinal);
             btnPlay .setEnabled(true);
             btnExport.setEnabled(true);
             btnExportMidi.setEnabled(true);
